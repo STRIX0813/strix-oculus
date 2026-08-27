@@ -18,6 +18,13 @@ from kis_client import KISClient
 
 app = FastAPI(title='STRIX Oculus Stock Platform')
 
+# Explicit Korea Standard Time (KST, UTC+9)
+KST = datetime.timezone(datetime.timedelta(hours=9))
+
+def get_now_kst():
+    return datetime.datetime.now(KST)
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=['*'],
@@ -820,7 +827,7 @@ fetcher_thread.start()
 
 @app.get('/api/market-status')
 def get_market_status():
-    now = datetime.datetime.now()
+    now = get_now_kst()
     kr_open = (now.weekday() < 5) and (
         (now.hour > 9 or (now.hour == 9 and now.minute >= 0)) and
         (now.hour < 15 or (now.hour == 15 and now.minute <= 30))
@@ -876,7 +883,7 @@ def get_stocks_ranking(
 
     return {
         'count': len(stocks),
-        'updated_at': datetime.datetime.now().strftime('%H:%M:%S'),
+        'updated_at': get_now_kst().strftime('%H:%M:%S'),
         'stocks': stocks
     }
 
