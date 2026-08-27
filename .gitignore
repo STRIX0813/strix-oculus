@@ -1,0 +1,7 @@
+﻿__pycache__/
+*.pyc
+.env
+venv/
+.system_generated/
+.user_uploaded/
+scratch/

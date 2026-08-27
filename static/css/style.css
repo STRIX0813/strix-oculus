@@ -1,0 +1,270 @@
+﻿@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+
+:root {
+  --font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, 'Helvetica Neue', 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+  --bg-main: #0F1117;
+  --bg-card: #161B22;
+  --bg-card-hover: #1C2128;
+  --bg-input: #1C2128;
+  --text-primary: #F3F4F6;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
+  --text-light: #475569;
+  --color-up: #FF5252;
+  --color-up-bg: rgba(255, 82, 82, 0.15);
+  --color-down: #3B82F6;
+  --color-down-bg: rgba(59, 130, 246, 0.15);
+  --color-neutral: #94A3B8;
+  --border-dark: #2D333B;
+  --border-subtle: #21262D;
+  --brand-amber: #F59E0B;
+  --brand-amber-light: #FCD34D;
+  --brand-amber-glow: rgba(245, 158, 11, 0.25);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-family);
+  background-color: var(--bg-main);
+  color: var(--text-primary);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0F1117;
+}
+::-webkit-scrollbar-thumb {
+  background: #2D333B;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* Header */
+.top-nav {
+  background-color: rgba(22, 27, 34, 0.85);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-dark);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+/* Card */
+.toss-card {
+  background-color: var(--bg-card);
+  border-radius: 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border-dark);
+  transition: all 0.2s ease;
+}
+.toss-card:hover {
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.45);
+}
+
+/* Index Cards */
+.index-card {
+  background-color: var(--bg-card);
+  border-radius: 16px;
+  padding: 16px 20px;
+  border: 1px solid var(--border-dark);
+  min-width: 200px;
+  flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.index-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(245, 158, 11, 0.45);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.5), 0 0 12px rgba(245, 158, 11, 0.12);
+}
+
+/* Chip filter buttons */
+.filter-chip {
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background-color: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+.filter-chip:hover {
+  background-color: #21262D;
+  color: var(--text-primary);
+}
+.filter-chip.active {
+  background-color: var(--brand-amber);
+  color: #0F1117;
+  font-weight: 700;
+  box-shadow: 0 2px 8px var(--brand-amber-glow);
+}
+
+.sub-filter-chip {
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background-color: #1C2128;
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.sub-filter-chip:hover {
+  background-color: #262C36;
+  color: var(--text-primary);
+}
+.sub-filter-chip.active {
+  background-color: rgba(245, 158, 11, 0.15);
+  color: var(--brand-amber-light);
+  font-weight: 600;
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+/* Tab Navigation */
+.main-tab {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-muted);
+  cursor: pointer;
+  position: relative;
+  padding-bottom: 8px;
+  transition: color 0.15s ease;
+}
+.main-tab:hover {
+  color: var(--text-secondary);
+}
+.main-tab.active {
+  color: var(--text-primary);
+}
+.main-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background-color: var(--brand-amber);
+  border-radius: 2px;
+  box-shadow: 0 0 8px var(--brand-amber);
+}
+
+/* Sparklines */
+.sparkline-svg {
+  width: 100%;
+  height: 48px;
+  overflow: visible;
+}
+
+/* Table styling */
+.stock-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.stock-table th {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  padding: 12px 16px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-dark);
+}
+.stock-table td {
+  padding: 14px 16px;
+  font-size: 14px;
+  border-bottom: 1px solid #1C2128;
+  vertical-align: middle;
+}
+.stock-row {
+  transition: background-color 0.15s ease;
+  cursor: pointer;
+}
+.stock-row:hover {
+  background-color: #1C2128;
+}
+
+/* Ratio Bar */
+.ratio-bar-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 130px;
+}
+.ratio-bar {
+  height: 6px;
+  border-radius: 3px;
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  background-color: #21262D;
+}
+.ratio-bar-buy {
+  background-color: var(--color-down);
+  height: 100%;
+}
+.ratio-bar-sell {
+  background-color: var(--color-up);
+  height: 100%;
+}
+
+/* Badges */
+.badge-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  background-color: #21262D;
+  color: var(--text-secondary);
+}
+
+.logo-badge {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #FFFFFF;
+  flex-shrink: 0;
+}
+
+.price-up {
+  color: var(--color-up);
+}
+.price-down {
+  color: var(--color-down);
+}
+.price-neutral {
+  color: var(--text-secondary);
+}
+
+/* Modal */
+.modal-overlay {
+  background-color: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+}
