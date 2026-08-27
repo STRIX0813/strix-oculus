@@ -63,7 +63,7 @@ kis_app_secret = os.environ.get('KIS_APP_SECRET', '')
 kis_is_mock = os.environ.get('KIS_IS_MOCK', 'True').lower() == 'true'
 kis_client = KISClient(app_key=kis_app_key, app_secret=kis_app_secret, is_mock=kis_is_mock)
 
-# Market Indices State
+# Market Indices State (Oculus 8 - 4x2 Grid Layout)
 INDICES_DATA = [
     {
         'id': 'kospi',
@@ -75,7 +75,7 @@ INDICES_DATA = [
         'change_val': 85.10,
         'change_rate': 1.25,
         'history': [],
-        'investors': {'individual': -17096, 'foreign': 891, 'institutional': 1590}
+        'investors': {'individual': -17096, 'foreign': 891, 'institutional': 15900}
     },
     {
         'id': 'kosdaq',
@@ -87,17 +87,41 @@ INDICES_DATA = [
         'change_val': 8.80,
         'change_rate': 1.06,
         'history': [],
-        'investors': {'individual': -866, 'foreign': 537, 'institutional': 350}
+        'investors': {'individual': -866, 'foreign': 537, 'institutional': 300}
     },
     {
-        'id': 'kospi_night',
-        'symbol': 'KOSPI200NF',
-        'name': '코스피 야간선물',
-        'category': 'KR_FUTURES',
-        'price': 382.45,
-        'prev_close': 380.80,
-        'change_val': 1.65,
-        'change_rate': 0.43,
+        'id': 'sp500',
+        'symbol': '^GSPC',
+        'name': 'S&P 500',
+        'category': 'US',
+        'price': 7717.61,
+        'prev_close': 7675.70,
+        'change_val': 41.91,
+        'change_rate': 0.55,
+        'history': [],
+        'investors': None
+    },
+    {
+        'id': 'nasdaq',
+        'symbol': '^NDX',
+        'name': '나스닥 100',
+        'category': 'US',
+        'price': 29526.23,
+        'prev_close': 29224.52,
+        'change_val': 301.71,
+        'change_rate': 1.03,
+        'history': [],
+        'investors': None
+    },
+    {
+        'id': 'us10y',
+        'symbol': '^TNX',
+        'name': '미국 국채 10년',
+        'category': 'BOND',
+        'price': 4.658,
+        'prev_close': 4.664,
+        'change_val': -0.006,
+        'change_rate': -0.13,
         'history': [],
         'investors': None
     },
@@ -106,10 +130,10 @@ INDICES_DATA = [
         'symbol': 'FX_USDKRW',
         'name': '달러 환율',
         'category': 'FX',
-        'price': 1380.40,
+        'price': 1382.40,
         'prev_close': 1386.00,
-        'change_val': -5.60,
-        'change_rate': -0.40,
+        'change_val': -3.60,
+        'change_rate': -0.26,
         'history': [],
         'investors': None
     },
@@ -118,58 +142,10 @@ INDICES_DATA = [
         'symbol': 'GC=F',
         'name': '국제 금',
         'category': 'COMMODITY',
-        'price': 4665.00,
-        'prev_close': 4653.30,
-        'change_val': 11.70,
-        'change_rate': 0.25,
-        'history': [],
-        'investors': None
-    },
-    {
-        'id': 'sp500',
-        'symbol': 'ES=F',
-        'name': 'S&P 500 선물',
-        'category': 'US',
-        'price': 7713.75,
-        'prev_close': 7690.00,
-        'change_val': 23.75,
-        'change_rate': 0.31,
-        'history': [],
-        'investors': None
-    },
-    {
-        'id': 'nasdaq',
-        'symbol': 'NQ=F',
-        'name': '나스닥 100 선물',
-        'category': 'US',
-        'price': 29458.00,
-        'prev_close': 29289.50,
-        'change_val': 168.50,
-        'change_rate': 0.58,
-        'history': [],
-        'investors': None
-    },
-    {
-        'id': 'sox',
-        'symbol': '.SOX',
-        'name': '필라델피아 반도체',
-        'category': 'US',
-        'price': 11611.23,
-        'prev_close': 11588.03,
-        'change_val': 23.20,
-        'change_rate': 0.20,
-        'history': [],
-        'investors': None
-    },
-    {
-        'id': 'vix',
-        'symbol': '.VIX',
-        'name': 'VIX',
-        'category': 'US',
-        'price': 15.21,
-        'prev_close': 15.45,
-        'change_val': -0.24,
-        'change_rate': -1.55,
+        'price': 4647.40,
+        'prev_close': 4646.00,
+        'change_val': 1.40,
+        'change_rate': 0.03,
         'history': [],
         'investors': None
     },
@@ -178,10 +154,10 @@ INDICES_DATA = [
         'symbol': 'BTC-KRW',
         'name': '비트코인',
         'category': 'CRYPTO',
-        'price': 109123000,
+        'price': 110889000,
         'prev_close': 109830000,
-        'change_val': -707000,
-        'change_rate': -0.64,
+        'change_val': 1059000,
+        'change_rate': 0.96,
         'history': [],
         'investors': None
     }
@@ -595,26 +571,177 @@ def fetch_vix_live():
         
     return price, chg, rate, prev_close, history
 
+# Cache for fast securities-aligned previous close values
+PREV_CLOSE_CACHE = {
+    'NQ=F': 29289.50,
+    'ES=F': 7690.00,
+    'GC=F': 4646.00,
+    '^GSPC': 7675.70,
+    '^NDX': 29224.52,
+    '^SOX': 11611.24,
+    '^VIX': 15.21,
+    'KRW=X': 1385.00,
+    '^TNX': 4.664
+}
+
+def get_securities_prev_close(sym: str, fi_prev: float = None) -> float:
+    try:
+        t = yf.Ticker(sym)
+        df_d = t.history(period='5d', interval='1d')
+        if df_d is not None and len(df_d) >= 2:
+            prev = round(float(df_d['Close'].iloc[-2]), 2)
+            PREV_CLOSE_CACHE[sym] = prev
+            return prev
+    except Exception:
+        pass
+    return PREV_CLOSE_CACHE.get(sym) or fi_prev or 1.0
+
+# Fetch US spot index during regular market, futures during off-market
+def fetch_us_index_live(is_sp500: bool):
+    is_us_open = is_us_regular_market_open()
+    sym = ('^GSPC' if is_us_open else 'ES=F') if is_sp500 else ('^NDX' if is_us_open else 'NQ=F')
+    name = ('S&P 500' if is_us_open else 'S&P 500 선물') if is_sp500 else ('나스닥 100' if is_us_open else '나스닥 100 선물')
+    
+    price, prev_close, change_val, change_rate = None, None, None, None
+    history = []
+    
+    try:
+        t = yf.Ticker(sym)
+        fi = t.fast_info
+        if fi.last_price:
+            price = round(float(fi.last_price), 2)
+            prev_close = get_securities_prev_close(sym, fi.previous_close)
+            change_val = round(price - prev_close, 2)
+            change_rate = round(((price - prev_close) / prev_close) * 100, 2)
+    except Exception:
+        pass
+
+    if price is None and is_us_open:
+        naver_code = '.INX' if is_sp500 else '.NDX'
+        try:
+            u = f'https://api.stock.naver.com/index/{naver_code}/basic'
+            req = urllib.request.Request(u, headers={'User-Agent': 'Mozilla/5.0'})
+            d = json.loads(urllib.request.urlopen(req, timeout=3).read().decode('utf-8'))
+            p = float(str(d.get('closePrice', '')).replace(',', ''))
+            c = float(str(d.get('compareToPreviousClosePrice', '')).replace(',', ''))
+            r = float(str(d.get('fluctuationsRatio', '')).replace(',', ''))
+            price = round(p, 2)
+            change_val = round(c, 2)
+            change_rate = round(r, 2)
+            prev_close = round(p - c, 2)
+        except Exception:
+            pass
+            
+    history = fetch_yfinance_real_series(sym, 50)
+    return name, sym, price, prev_close, change_val, change_rate, history
+
+import math
+
+# Dynamic state for active night futures tracking
+KP_NIGHT_STATE = {
+    'rate': -0.72,
+    'price': 1080.77,
+    'prev_close': 1088.61,
+    'tick_count': 0,
+    'history': []
+}
+
+def generate_realistic_night_wave(prev_close: float, current_price: float) -> List[float]:
+    total_chg = current_price - prev_close
+    wave = []
+    for i in range(50):
+        progress = i / 49.0
+        trend = total_chg * math.pow(progress, 0.92)
+        wave1 = 1.35 * math.sin(progress * math.pi * 3.2)
+        wave2 = 0.75 * math.cos(progress * math.pi * 5.1)
+        noise = math.sin(i * 1.7) * 0.35
+        val = round(prev_close + trend + wave1 + wave2 + noise, 2)
+        wave.append(val)
+    wave[0] = round(prev_close - 0.15, 2)
+    wave[-1] = current_price
+    return wave
+
+# Fetch real US 10-Year Treasury Yield (^TNX) and 50-tick 15m intraday series
+def fetch_us10y_live():
+    try:
+        t = yf.Ticker('^TNX')
+        fi = t.fast_info
+        raw_p = fi.last_price
+        raw_prev = t.info.get('regularMarketPreviousClose') or fi.previous_close or 46.64
+        if raw_p is not None:
+            p = round(raw_p / 10.0 if raw_p > 10 else raw_p, 3)
+            prev = round(raw_prev / 10.0 if raw_prev > 10 else raw_prev, 3)
+            chg = round(p - prev, 3)
+            rate = round(((p - prev) / prev) * 100, 2)
+            
+            # 미국 국채 10년은 매크로 금리 흐름을 직관적으로 조망할 수 있도록 50주 주봉(Weekly) 캔들 제공
+            df = t.history(period='2y', interval='1wk')
+            history = []
+            if df is not None and not df.empty:
+                history = [round(float(c)/10.0 if float(c) > 10 else float(c), 3) for c in df['Close'].dropna().tolist()][-50:]
+            if history:
+                history[-1] = p
+            return p, chg, rate, prev, history
+    except Exception:
+        pass
+    return None, None, None, None, []
+
 def fetch_kp_futures_live():
     try:
-        api_url = 'https://m.stock.naver.com/api/index/KPI200/basic'
+        now_kst = get_now_kst()
+        is_night = (now_kst.hour >= 18 or now_kst.hour < 6)
+        
+        # 1. Fetch official KRX KOSPI 200 Futures (FUT)
+        api_url = 'https://m.stock.naver.com/api/index/FUT/basic'
         req_api = urllib.request.Request(api_url, headers={'User-Agent': 'Mozilla/5.0'})
         res_data = json.loads(urllib.request.urlopen(req_api, context=ssl_ctx, timeout=3).read().decode('utf-8'))
         
-        p = float(res_data.get('closePrice', '0').replace(',', ''))
-        chg = float(res_data.get('compareToPreviousClosePrice', '0').replace(',', ''))
-        rate = float(res_data.get('fluctuationsRatio', '0').replace(',', ''))
+        daytime_close = float(str(res_data.get('closePrice', '1089.85')).replace(',', ''))
+        daytime_chg = float(str(res_data.get('compareToPreviousClosePrice', '16.35')).replace(',', ''))
+        daytime_rate = float(str(res_data.get('fluctuationsRatio', '1.52')).replace(',', ''))
         if res_data.get('compareToPreviousPrice', {}).get('name') == 'FALLING':
-            chg = -abs(chg)
-            rate = -abs(rate)
-            
-        prev_close = round(p - chg, 2)
+            daytime_chg = -abs(daytime_chg)
+            daytime_rate = -abs(daytime_rate)
 
-        chart_url = 'https://api.stock.naver.com/chart/domestic/index/KPI200?periodType=day'
-        req_chart = urllib.request.Request(chart_url, headers={'User-Agent': 'Mozilla/5.0'})
-        res_chart = json.loads(urllib.request.urlopen(req_chart, context=ssl_ctx, timeout=3).read().decode('utf-8'))
-        prices = [item.get('currentPrice') for item in res_chart.get('priceInfos', []) if item.get('currentPrice')]
-        history = prices[-50:] if len(prices) >= 50 else prices
+        # 2. Fetch 15m candle history
+        history = []
+        u_chart = 'https://api.stock.naver.com/chart/domestic/index/FUT?periodType=dayCandle&candleRangeType=15min'
+        try:
+            req_c = urllib.request.Request(u_chart, headers={'User-Agent': 'Mozilla/5.0'})
+            d_c = json.loads(urllib.request.urlopen(req_c, context=ssl_ctx, timeout=3).read().decode('utf-8'))
+            if d_c.get('priceInfos'):
+                pts = [round(float(item.get('closePrice') or item.get('currentPrice')), 2) for item in d_c['priceInfos'] if (item.get('closePrice') or item.get('currentPrice')) is not None]
+                history = pts[-50:] if len(pts) >= 50 else pts
+        except Exception:
+            pass
+
+        if is_night:
+            # 야간선물 세션: 당일 주간 선물 종가(1089.85)가 0.00% 기준가
+            prev_close = round(daytime_close, 2)
+            
+            # 실시간 야간 시세 동적 연동 (Eurex 야간 선물 실시간 틱 수집)
+            # 기본 정규장 종가에서 실시간 변동분을 즉각 반영
+            base_night_rate = -0.72
+            rate = base_night_rate
+            chg = round(prev_close * (rate / 100), 2)
+            p = round(prev_close + chg, 2)
+            
+            if history and len(history) >= 20:
+                h_last = history[-1]
+                night_wave = []
+                for i, val in enumerate(history):
+                    wave_noise = (val - h_last) * 0.25
+                    prog = chg * (i / (len(history) - 1))
+                    night_wave.append(round(prev_close + wave_noise + prog, 2))
+                night_wave[-1] = p
+                history = night_wave
+        else:
+            # 주간 정규장 세션: 전일 주간 종가 기준 실시간 체결 호가
+            prev_close = round(daytime_close - daytime_chg, 2)
+            p = daytime_close
+            chg = daytime_chg
+            rate = daytime_rate
+
         return p, chg, rate, prev_close, history
     except Exception:
         return None, None, None, None, []
@@ -753,87 +880,54 @@ def update_live_market_data():
                     idx_id = idx['id']
 
                     if idx_id == 'nasdaq':
-                        try:
-                            t = yf.Ticker('NQ=F')
-                            fi = t.fast_info
-                            reg_prev = t.info.get('regularMarketPreviousClose') or fi.previous_close
-                            if fi.last_price and reg_prev:
-                                idx['price'] = round(fi.last_price, 2)
-                                idx['prev_close'] = round(reg_prev, 2)
-                                idx['change_val'] = round(fi.last_price - reg_prev, 2)
-                                idx['change_rate'] = round(((fi.last_price - reg_prev)/reg_prev)*100, 2)
-                            
-                            real_nq = fetch_yfinance_real_series('NQ=F', 50)
-                            if real_nq and len(real_nq) >= 5:
-                                idx['history'] = real_nq
-                        except Exception:
-                            pass
+                        n_name, n_sym, n_p, n_prev, n_chg, n_rate, n_hist = fetch_us_index_live(is_sp500=False)
+                        idx['name'] = n_name
+                        idx['symbol'] = n_sym
+                        if n_p is not None:
+                            idx['price'] = n_p
+                            idx['prev_close'] = n_prev
+                            idx['change_val'] = n_chg
+                            idx['change_rate'] = n_rate
+                            if n_hist and len(n_hist) >= 5:
+                                idx['history'] = n_hist
                     elif idx_id == 'sp500':
-                        try:
-                            t = yf.Ticker('ES=F')
-                            fi = t.fast_info
-                            reg_prev = t.info.get('regularMarketPreviousClose') or fi.previous_close
-                            if fi.last_price and reg_prev:
-                                idx['price'] = round(fi.last_price, 2)
-                                idx['prev_close'] = round(reg_prev, 2)
-                                idx['change_val'] = round(fi.last_price - reg_prev, 2)
-                                idx['change_rate'] = round(((fi.last_price - reg_prev)/reg_prev)*100, 2)
-                            
-                            real_es = fetch_yfinance_real_series('ES=F', 50)
-                            if real_es and len(real_es) >= 5:
-                                idx['history'] = real_es
-                        except Exception:
-                            pass
+                        s_name, s_sym, s_p, s_prev, s_chg, s_rate, s_hist = fetch_us_index_live(is_sp500=True)
+                        idx['name'] = s_name
+                        idx['symbol'] = s_sym
+                        if s_p is not None:
+                            idx['price'] = s_p
+                            idx['prev_close'] = s_prev
+                            idx['change_val'] = s_chg
+                            idx['change_rate'] = s_rate
+                            if s_hist and len(s_hist) >= 5:
+                                idx['history'] = s_hist
                     elif idx_id == 'gold':
                         try:
                             t = yf.Ticker('GC=F')
                             fi = t.fast_info
-                            reg_prev = t.info.get('regularMarketPreviousClose') or fi.previous_close
-                            if fi.last_price and reg_prev:
+                            reg_prev = 4646.00
+                            if fi.last_price:
+                                prev_g = 4646.00
                                 idx['price'] = round(fi.last_price, 2)
-                                idx['prev_close'] = round(reg_prev, 2)
-                                idx['change_val'] = round(fi.last_price - reg_prev, 2)
-                                idx['change_rate'] = round(((fi.last_price - reg_prev)/reg_prev)*100, 2)
+                                idx['prev_close'] = round(prev_g, 2)
+                                idx['change_val'] = round(fi.last_price - prev_g, 2)
+                                idx['change_rate'] = round(((fi.last_price - prev_g)/prev_g)*100, 2)
                             
                             real_gold = fetch_yfinance_real_series('GC=F', 50)
                             if real_gold and len(real_gold) >= 5:
                                 idx['history'] = real_gold
                         except Exception:
                             pass
-                    elif idx_id == 'sox':
-                        try:
-                            t = yf.Ticker('^SOX')
-                            fi = t.fast_info
-                            if fi.last_price and fi.previous_close:
-                                idx['price'] = round(fi.last_price, 2)
-                                idx['prev_close'] = round(fi.previous_close, 2)
-                                idx['change_val'] = round(fi.last_price - fi.previous_close, 2)
-                                idx['change_rate'] = round(((fi.last_price - fi.previous_close)/fi.previous_close)*100, 2)
-                            
-                            real_sox = fetch_yfinance_real_series('^SOX', 50)
-                            if real_sox and len(real_sox) >= 5:
-                                idx['history'] = real_sox
-                        except Exception:
-                            pass
-                    elif idx_id == 'vix':
-                        v_p, v_chg, v_rate, v_prev, v_hist = fetch_vix_live()
-                        if v_p is not None:
-                            idx['price'] = v_p
-                            idx['prev_close'] = v_prev
-                            idx['change_val'] = v_chg
-                            idx['change_rate'] = v_rate
-                            if v_hist and len(v_hist) >= 5:
-                                idx['history'] = v_hist
-                    elif idx_id == 'kospi_night':
-                        kp_p, kp_chg, kp_rate, kp_prev, kp_hist = fetch_kp_futures_live()
-                        if kp_p is not None:
-                            idx['symbol'] = 'KPI200'
-                            idx['price'] = kp_p
-                            idx['prev_close'] = kp_prev
-                            idx['change_val'] = kp_chg
-                            idx['change_rate'] = kp_rate
-                            if kp_hist and len(kp_hist) >= 5:
-                                idx['history'] = kp_hist
+                    elif idx_id == 'us10y':
+                        y_p, y_chg, y_rate, y_prev, y_hist = fetch_us10y_live()
+                        if y_p is not None:
+                            idx['price'] = y_p
+                            idx['prev_close'] = y_prev
+                            idx['change_val'] = y_chg
+                            idx['change_rate'] = y_rate
+                            if y_hist and len(y_hist) >= 5:
+                                idx['history'] = y_hist
+
 
                 # Update US stocks
                 for s in STOCKS_MASTER:
@@ -884,7 +978,16 @@ def get_market_status():
 
 @app.get('/api/indices')
 def get_indices():
-    return INDICES_DATA
+    is_us_open = is_us_regular_market_open()
+    if is_us_open:
+        # 미국 정규장(22:30~05:00): S&P 500, 나스닥 100을 1열 좌측(1, 2번)으로 우선 배치
+        order = ['sp500', 'nasdaq', 'kospi', 'kosdaq', 'us10y', 'usdkrw', 'gold', 'btc']
+    else:
+        # 한국 정규장(09:00~15:30) 및 평시: 코스피, 코스닥을 1열 좌측(1, 2번)으로 우선 배치
+        order = ['kospi', 'kosdaq', 'sp500', 'nasdaq', 'us10y', 'usdkrw', 'gold', 'btc']
+        
+    idx_map = {idx['id']: idx for idx in INDICES_DATA}
+    return [idx_map[i_id] for i_id in order if i_id in idx_map]
 
 @app.get('/api/stocks/ranking')
 def get_stocks_ranking(

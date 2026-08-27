@@ -181,6 +181,7 @@ function renderIndices() {
 
     container.innerHTML = state.indices.map((idx) => {
         const isBTC = idx.id === 'btc';
+        const isUS10Y = idx.id === 'us10y';
         const isUp = idx.change_rate >= 0;
         const changeInfo = formatChange(idx.change_val, idx.change_rate, isBTC);
         const prevCloseVal = idx.prev_close || (idx.price - (idx.change_val || 0));
@@ -188,6 +189,8 @@ function renderIndices() {
         let priceHtml = '';
         if (isBTC) {
             priceHtml = `<span class="text-lg font-extrabold text-white tracking-tight font-sans">${Math.round(idx.price).toLocaleString('ko-KR')}</span><span class="text-xs font-semibold text-slate-300 font-sans ml-1">원</span>`;
+        } else if (isUS10Y) {
+            priceHtml = `<span class="text-lg font-extrabold text-white tracking-tight font-sans">${Number(idx.price).toFixed(3)}</span><span class="text-xs font-semibold text-slate-300 font-sans ml-1">%</span>`;
         } else {
             const formattedPrice = typeof idx.price === 'number' ? idx.price.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : idx.price;
             priceHtml = `<span class="text-lg font-extrabold text-white tracking-tight font-sans">${formattedPrice}</span>`;
@@ -214,7 +217,7 @@ function renderIndices() {
                         ${priceHtml}
                     </div>
                     <div class="flex items-center gap-1 text-[11px] sm:text-xs ${changeInfo.colorClass} font-sans flex-wrap">
-                        <span>${changeInfo.formattedVal}</span>
+                        <span>${isUS10Y ? (isUp ? '+' : '') + Number(idx.change_val).toFixed(3) + '%p' : changeInfo.formattedVal}</span>
                         <span class="font-bold">(${changeInfo.formattedRate})</span>
                     </div>
                 </div>
