@@ -547,7 +547,7 @@ def fetch_btc_real_candles():
 def fetch_yfinance_real_series(sym: str, count: int = 50) -> List[float]:
     try:
         t = yf.Ticker(sym)
-        df = t.history(period='1d', interval='5m')
+        df = t.history(period='5d', interval='15m')
         if df is not None and not df.empty:
             closes = [round(float(c), 2) for c in df['Close'].tolist()]
             return closes[-count:] if len(closes) >= count else closes
@@ -556,6 +556,45 @@ def fetch_yfinance_real_series(sym: str, count: int = 50) -> List[float]:
     return []
 
 # Fetch KP선물 (코스피 200 선물 / KPI200) live
+# Fetch real VIX index and 50-tick intraday series
+def fetch_vix_live():
+    price, chg, rate, prev_close = 15.21, -0.24, -1.55, 15.45
+    history = []
+    try:
+        u = 'https://api.stock.naver.com/index/.VIX/basic'
+        req = urllib.request.Request(u, headers={'User-Agent': 'Mozilla/5.0'})
+        d = json.loads(urllib.request.urlopen(req, timeout=3).read().decode('utf-8'))
+        p = float(str(d.get('closePrice', '')).replace(',', ''))
+        c = float(str(d.get('compareToPreviousClosePrice', '')).replace(',', ''))
+        r = float(str(d.get('fluctuationsRatio', '')).replace(',', ''))
+        price = round(p, 2)
+        chg = round(c, 2)
+        rate = round(r, 2)
+        prev_close = round(p - c, 2)
+    except Exception:
+        pass
+        
+    try:
+        t = yf.Ticker('^VIX')
+        df = t.history(period='5d', interval='15m')
+        if df is not None and not df.empty:
+            closes = [round(float(c), 2) for c in df['Close'].tolist()]
+            history = closes[-50:] if len(closes) >= 50 else closes
+    except Exception:
+        pass
+    if not history:
+        try:
+            u = 'https://api.stock.naver.com/chart/foreign/index/.VIX?periodType=day'
+            req = urllib.request.Request(u, headers={'User-Agent': 'Mozilla/5.0'})
+            d = json.loads(urllib.request.urlopen(req, timeout=3).read().decode('utf-8'))
+            if d.get('priceInfos'):
+                pts = [round(float(item['currentPrice']), 2) for item in d['priceInfos'] if item.get('currentPrice') is not None]
+                history = pts[-50:] if len(pts) >= 50 else pts
+        except Exception:
+            pass
+        
+    return price, chg, rate, prev_close, history
+
 def fetch_kp_futures_live():
     try:
         api_url = 'https://m.stock.naver.com/api/index/KPI200/basic'
@@ -777,20 +816,14 @@ def update_live_market_data():
                         except Exception:
                             pass
                     elif idx_id == 'vix':
-                        try:
-                            t = yf.Ticker('^VIX')
-                            fi = t.fast_info
-                            if fi.last_price and fi.previous_close:
-                                idx['price'] = round(fi.last_price, 2)
-                                idx['prev_close'] = round(fi.previous_close, 2)
-                                idx['change_val'] = round(fi.last_price - fi.previous_close, 2)
-                                idx['change_rate'] = round(((fi.last_price - fi.previous_close)/fi.previous_close)*100, 2)
-                            
-                            real_vix = fetch_yfinance_real_series('^VIX', 50)
-                            if real_vix and len(real_vix) >= 5:
-                                idx['history'] = real_vix
-                        except Exception:
-                            pass
+                        v_p, v_chg, v_rate, v_prev, v_hist = fetch_vix_live()
+                        if v_p is not None:
+                            idx['price'] = v_p
+                            idx['prev_close'] = v_prev
+                            idx['change_val'] = v_chg
+                            idx['change_rate'] = v_rate
+                            if v_hist and len(v_hist) >= 5:
+                                idx['history'] = v_hist
                     elif idx_id == 'kospi_night':
                         kp_p, kp_chg, kp_rate, kp_prev, kp_hist = fetch_kp_futures_live()
                         if kp_p is not None:

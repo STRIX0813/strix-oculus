@@ -17,13 +17,18 @@ function formatCurrency(val, isUSD = false) {
     return Number(val).toLocaleString('ko-KR') + '원';
 }
 
-function formatChange(val, rate) {
+function formatChange(val, rate, isInt = false) {
     const isUp = rate > 0;
     const isDown = rate < 0;
     const sign = isUp ? '+' : '';
     const colorClass = isUp ? 'price-up font-bold' : (isDown ? 'price-down font-bold' : 'price-neutral');
     const formattedRate = `${sign}${rate.toFixed(2)}%`;
-    const formattedVal = `${sign}${typeof val === 'number' ? Number(val).toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : val}`;
+    let formattedVal;
+    if (isInt && typeof val === 'number') {
+        formattedVal = `${sign}${Math.round(val).toLocaleString('ko-KR')}`;
+    } else {
+        formattedVal = `${sign}${typeof val === 'number' ? Number(val).toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : val}`;
+    }
     return { colorClass, formattedRate, formattedVal, isUp, isDown, sign };
 }
 
@@ -146,7 +151,7 @@ function renderMarketStatus() {
             <div class="flex items-center gap-2">
                 <span class="w-2.5 h-2.5 rounded-full ${kr_market.is_open ? 'bg-amber-400 shadow-sm shadow-amber-400 animate-pulse' : 'bg-slate-500'}"></span>
                 <span class="text-slate-200 font-semibold">${kr_market.name}</span>
-                <span class="text-slate-400 font-mono">${kr_market.time}</span>
+                <span class="text-slate-400 font-sans">${kr_market.time}</span>
                 <span class="text-[11px] font-medium px-1.5 py-0.5 rounded ${kr_market.is_open ? 'bg-amber-400/10 text-amber-400' : 'bg-slate-800 text-slate-400'}">${kr_market.status_text}</span>
             </div>
             
@@ -155,13 +160,13 @@ function renderMarketStatus() {
                 <div class="flex items-center gap-2">
                     <span class="w-2.5 h-2.5 rounded-full ${us_market.is_open ? 'bg-amber-400 shadow-sm shadow-amber-400 animate-pulse' : 'bg-slate-500'}"></span>
                     <span class="text-slate-200 font-semibold">${us_market.name}</span>
-                    <span class="text-slate-400 font-mono">${us_market.time}</span>
+                    <span class="text-slate-400 font-sans">${us_market.time}</span>
                     <span class="text-[11px] font-medium px-1.5 py-0.5 rounded ${us_market.is_open ? 'bg-amber-400/10 text-amber-400' : 'bg-slate-800 text-slate-400'}">${us_market.status_text}</span>
                 </div>
             ` : ''}
         </div>
         <div class="text-xs text-slate-500">
-            실시간 피드: <span class="font-mono text-amber-400 font-semibold">${server_time}</span>
+            실시간 피드: <span class="font-sans text-amber-400 font-semibold">${server_time}</span>
         </div>
     `;
 }
@@ -175,10 +180,18 @@ function renderIndices() {
     const usOpen = state.marketStatus?.us_market?.is_open ?? false;
 
     container.innerHTML = state.indices.map((idx) => {
+        const isBTC = idx.id === 'btc';
         const isUp = idx.change_rate >= 0;
-        const changeInfo = formatChange(idx.change_val, idx.change_rate);
-        const formattedPrice = idx.id === 'btc' ? formatCurrency(idx.price) : (typeof idx.price === 'number' ? idx.price.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : idx.price);
+        const changeInfo = formatChange(idx.change_val, idx.change_rate, isBTC);
         const prevCloseVal = idx.prev_close || (idx.price - (idx.change_val || 0));
+
+        let priceHtml = '';
+        if (isBTC) {
+            priceHtml = `<span class="text-lg font-extrabold text-white tracking-tight font-sans">${Math.round(idx.price).toLocaleString('ko-KR')}</span><span class="text-xs font-semibold text-slate-300 font-sans ml-1">원</span>`;
+        } else {
+            const formattedPrice = typeof idx.price === 'number' ? idx.price.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : idx.price;
+            priceHtml = `<span class="text-lg font-extrabold text-white tracking-tight font-sans">${formattedPrice}</span>`;
+        }
 
         // Active Market Session Border Highlight (국내 장중 -> 코스피/코스닥, 미국 본장 -> S&P500/나스닥100)
         let isSessionActive = false;
@@ -193,47 +206,46 @@ function renderIndices() {
             : 'border-[#2D333B] bg-[#161B22]';
 
         return `
-            <div class="index-card ${cardStyleClasses}">
-                <!-- 1. Card Header: Title, Price, Change Info -->
-                <div class="flex items-start justify-between mb-1.5">
-                    <div>
-                        <div class="flex items-center gap-1.5">
-                            <span class="font-bold text-slate-200 text-sm">${idx.name}</span>
-                        </div>
-                        <div class="mt-1 flex items-baseline gap-2">
-                            <span class="text-lg font-extrabold text-white tracking-tight font-mono">${formattedPrice}</span>
-                            <span class="text-xs ${changeInfo.colorClass}">
-                                ${changeInfo.formattedVal} (${changeInfo.formattedRate})
-                            </span>
-                        </div>
+            <div class="index-card ${cardStyleClasses} flex flex-col justify-between h-[215px]">
+                <!-- 1. Card Header: Title, Price, Change Info (Zero-Overflow Responsive Layout) -->
+                <div class="flex flex-col gap-1 mb-1">
+                    <span class="font-bold text-slate-200 text-xs sm:text-sm tracking-tight truncate">${idx.name}</span>
+                    <div class="flex items-baseline">
+                        ${priceHtml}
+                    </div>
+                    <div class="flex items-center gap-1 text-[11px] sm:text-xs ${changeInfo.colorClass} font-sans flex-wrap">
+                        <span>${changeInfo.formattedVal}</span>
+                        <span class="font-bold">(${changeInfo.formattedRate})</span>
                     </div>
                 </div>
 
                 <!-- 2. Toss Style 50-Tick Chart with Dotted Baseline & Contrast Area Gradient -->
-                <div class="my-1.5">
+                <div class="my-auto py-1">
                     ${generateToss50TickChartSvg(idx.history, prevCloseVal, isUp)}
                 </div>
 
-                <!-- 3. Footer: Investor Flows (Unified 3-Column Structured Layout) -->
+                <!-- 3. Footer: Investor Flows (Only on KOSPI / KOSDAQ, no extra labels on other cards) -->
                 ${idx.investors ? `
-                    <div class="pt-2 mt-1 border-t border-[#2D333B] grid grid-cols-3 text-center font-mono">
-                        <div class="flex flex-col items-center">
-                            <span class="text-[10px] text-slate-400 font-sans tracking-tight">개인</span>
-                            <span class="text-[11px] ${idx.investors.individual >= 0 ? 'text-[#FF5252]' : 'text-[#3B82F6]'} font-bold tracking-tight">
-                                ${idx.investors.individual > 0 ? '+' : ''}${idx.investors.individual.toLocaleString()}
-                            </span>
-                        </div>
-                        <div class="flex flex-col items-center">
-                            <span class="text-[10px] text-slate-400 font-sans tracking-tight">외인</span>
-                            <span class="text-[11px] ${idx.investors.foreign >= 0 ? 'text-[#FF5252]' : 'text-[#3B82F6]'} font-bold tracking-tight">
-                                ${idx.investors.foreign > 0 ? '+' : ''}${idx.investors.foreign.toLocaleString()}
-                            </span>
-                        </div>
-                        <div class="flex flex-col items-center">
-                            <span class="text-[10px] text-slate-400 font-sans tracking-tight">기관</span>
-                            <span class="text-[11px] ${idx.investors.institutional >= 0 ? 'text-[#FF5252]' : 'text-[#3B82F6]'} font-bold tracking-tight">
-                                ${idx.investors.institutional > 0 ? '+' : ''}${idx.investors.institutional.toLocaleString()}
-                            </span>
+                    <div class="pt-2 mt-auto border-t border-[#2D333B] h-[36px] flex items-center justify-center">
+                        <div class="w-full grid grid-cols-3 text-center font-sans">
+                            <div class="flex flex-col items-center">
+                                <span class="text-[10px] text-slate-400 font-sans tracking-tight">개인</span>
+                                <span class="text-[11px] ${idx.investors.individual >= 0 ? 'text-[#FF5252]' : 'text-[#3B82F6]'} font-bold tracking-tight">
+                                    ${idx.investors.individual > 0 ? '+' : ''}${idx.investors.individual.toLocaleString()}
+                                </span>
+                            </div>
+                            <div class="flex flex-col items-center">
+                                <span class="text-[10px] text-slate-400 font-sans tracking-tight">외인</span>
+                                <span class="text-[11px] ${idx.investors.foreign >= 0 ? 'text-[#FF5252]' : 'text-[#3B82F6]'} font-bold tracking-tight">
+                                    ${idx.investors.foreign > 0 ? '+' : ''}${idx.investors.foreign.toLocaleString()}
+                                </span>
+                            </div>
+                            <div class="flex flex-col items-center">
+                                <span class="text-[10px] text-slate-400 font-sans tracking-tight">기관</span>
+                                <span class="text-[11px] ${idx.investors.institutional >= 0 ? 'text-[#FF5252]' : 'text-[#3B82F6]'} font-bold tracking-tight">
+                                    ${idx.investors.institutional > 0 ? '+' : ''}${idx.investors.institutional.toLocaleString()}
+                                </span>
+                            </div>
                         </div>
                     </div>
                 ` : ''}
@@ -276,7 +288,7 @@ function renderStocks(updatedAt) {
         return `
             <tr class="stock-row" onclick="openStockDetail('${stock.code}')">
                 <!-- Rank -->
-                <td class="font-bold text-slate-400 text-sm pl-4 w-12 text-center font-mono">
+                <td class="font-bold text-slate-400 text-sm pl-4 w-12 text-center font-sans">
                     ${stock.rank}
                 </td>
                 
@@ -291,30 +303,30 @@ function renderStocks(updatedAt) {
                                 <span class="font-bold text-slate-100 text-sm hover:text-amber-400 transition">${stock.name}</span>
                                 ${stock.is_warning ? `<span class="badge-tag bg-amber-950/60 text-amber-400 border border-amber-500/40 text-[10px]">투자주의</span>` : ''}
                             </div>
-                            <span class="text-xs text-slate-400 font-mono">${stock.code} · ${stock.market === 'KR' ? '국내' : '해외'}</span>
+                            <span class="text-xs text-slate-400 font-sans">${stock.code} · ${stock.market === 'KR' ? '국내' : '해외'}</span>
                         </div>
                     </div>
                 </td>
 
                 <!-- Price -->
-                <td class="text-right font-extrabold font-mono text-slate-100 text-sm">
+                <td class="text-right font-extrabold font-sans text-slate-100 text-sm">
                     ${formattedPrice}
                 </td>
 
                 <!-- Change Rate -->
                 <td class="text-right">
-                    <span class="inline-block px-2.5 py-1 rounded-md text-xs font-bold font-mono ${stock.change_rate > 0 ? 'bg-red-500/15 text-[#FF5252] border border-red-500/20' : (stock.change_rate < 0 ? 'bg-blue-500/15 text-[#3B82F6] border border-blue-500/20' : 'bg-slate-800 text-slate-400')}">
+                    <span class="inline-block px-2.5 py-1 rounded-md text-xs font-bold font-sans ${stock.change_rate > 0 ? 'bg-red-500/15 text-[#FF5252] border border-red-500/20' : (stock.change_rate < 0 ? 'bg-blue-500/15 text-[#3B82F6] border border-blue-500/20' : 'bg-slate-800 text-slate-400')}">
                         ${changeInfo.formattedRate}
                     </span>
                 </td>
 
                 <!-- Trading Value -->
-                <td class="text-right font-mono text-sm font-semibold text-slate-200">
+                <td class="text-right font-sans text-sm font-semibold text-slate-200">
                     ${tradingValStr}
                 </td>
 
                 <!-- Market Cap -->
-                <td class="text-right font-mono text-xs text-slate-400">
+                <td class="text-right font-sans text-xs text-slate-400">
                     ${stock.market_cap}
                 </td>
 
@@ -322,12 +334,12 @@ function renderStocks(updatedAt) {
                 <td>
                     <div class="flex flex-col items-center gap-1">
                         <div class="ratio-bar-container">
-                            <span class="text-[11px] font-bold text-blue-400 font-mono">${stock.buy_ratio}</span>
+                            <span class="text-[11px] font-bold text-blue-400 font-sans">${stock.buy_ratio}</span>
                             <div class="ratio-bar">
                                 <div class="ratio-bar-buy" style="width: ${stock.buy_ratio}%"></div>
                                 <div class="ratio-bar-sell" style="width: ${stock.sell_ratio}%"></div>
                             </div>
-                            <span class="text-[11px] font-bold text-red-400 font-mono">${stock.sell_ratio}</span>
+                            <span class="text-[11px] font-bold text-red-400 font-sans">${stock.sell_ratio}</span>
                         </div>
                     </div>
                 </td>
