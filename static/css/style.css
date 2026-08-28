@@ -176,32 +176,39 @@ body {
   overflow: visible;
 }
 
-/* Table styling */
+/* Table styling - Open Air Modern Floating Layout (No Stuffy Outer Box) */
 .stock-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
+  background: transparent;
 }
-.stock-table th {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-muted);
-  padding: 12px 16px;
-  text-align: left;
-  border-bottom: 1px solid var(--border-dark);
-}
-.stock-table td {
-  padding: 14px 16px;
-  font-size: 14px;
-  border-bottom: 1px solid #1C2128;
+.stock-table th, .stock-table td {
+  box-sizing: border-box;
   vertical-align: middle;
 }
+.stock-table th {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #94A3B8;
+  padding: 14px 12px;
+  border-bottom: 1px solid rgba(45, 51, 59, 0.8);
+  background: transparent;
+  letter-spacing: -0.01em;
+}
+.stock-table td {
+  padding: 15px 12px;
+  font-size: 14px;
+  border-bottom: 1px solid rgba(33, 38, 45, 0.55);
+  background: transparent;
+}
 .stock-row {
-  transition: background-color 0.15s ease;
+  transition: background-color 0.15s ease, transform 0.15s ease;
   cursor: pointer;
 }
 .stock-row:hover {
-  background-color: #1C2128;
+  background-color: rgba(28, 33, 40, 0.8);
 }
 
 /* Ratio Bar */

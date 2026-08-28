@@ -1,3 +1,70 @@
+
+// 1-Second Smooth Local Clock Ticker
+function updateClockTick() {
+    const clockEl = document.getElementById('serverTimeClock');
+    if (!clockEl) return;
+    const now = new Date();
+    const h = String(now.getHours()).padStart(2, '0');
+    const m = String(now.getMinutes()).padStart(2, '0');
+    const s = String(now.getSeconds()).padStart(2, '0');
+    clockEl.innerText = `${h}:${m}:${s}`;
+}
+
+
+// ==========================================
+// Theme Toggle Engine (Dark / Light Mode)
+// ==========================================
+function initTheme() {
+    const savedTheme = localStorage.getItem('strix_oculus_theme') || 'dark';
+    applyTheme(savedTheme);
+}
+
+function applyTheme(theme) {
+    const isLight = theme === 'light';
+    if (isLight) {
+        document.body.classList.add('light-theme');
+    } else {
+        document.body.classList.remove('light-theme');
+    }
+    localStorage.setItem('strix_oculus_theme', theme);
+    
+    const iconEl = document.getElementById('themeIcon');
+    const labelEl = document.getElementById('themeLabel');
+    if (iconEl) {
+        iconEl.innerText = isLight ? '🌙' : '☀️';
+    }
+    if (labelEl) {
+        labelEl.innerText = isLight ? '다크 모드' : '라이트 모드';
+    }
+}
+
+function toggleTheme() {
+    const isCurrentlyLight = document.body.classList.contains('light-theme');
+    const nextTheme = isCurrentlyLight ? 'dark' : 'light';
+    applyTheme(nextTheme);
+}
+
+// Checkbox format toggle
+function toggleStocksOnly() {
+    state.stocksOnly = !state.stocksOnly;
+    const btn = document.getElementById('btnStocksOnly');
+    const dot = document.getElementById('stocksOnlyDot');
+    const text = document.getElementById('stocksOnlyText');
+
+    if (btn && dot && text) {
+        if (state.stocksOnly) {
+            btn.className = "flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border border-amber-500/50 bg-amber-500/15 text-amber-400 shadow-sm shadow-amber-500/20 hover:scale-105 active:scale-95 cursor-pointer";
+            dot.className = "w-2 h-2 rounded-full bg-amber-400 shadow-sm shadow-amber-400";
+            text.innerText = "주식만 보기 ON";
+        } else {
+            btn.className = "flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border border-[#2D333B] bg-[#1C2128] text-slate-400 hover:text-slate-200 hover:bg-[#22272E] hover:scale-105 active:scale-95 cursor-pointer";
+            dot.className = "w-2 h-2 rounded-full bg-slate-500";
+            text.innerText = "주식만 보기 OFF (ETF 포함)";
+        }
+    }
+    fetchStocks();
+}
+
 function formatMarketCap(cap) {
     if (!cap) return '-';
     if (typeof cap === 'string') {
@@ -45,6 +112,7 @@ function formatTradingValue(val) {
 let state = {
     marketFilter: 'all',
     sortFilter: 'trading_value',
+    stocksOnly: true,
     hideWarning: false,
     searchQuery: '',
     indices: [],
@@ -172,6 +240,7 @@ async function fetchStocks() {
         const params = new URLSearchParams({
             market: state.marketFilter,
             sort: state.sortFilter,
+            stocks_only: state.stocksOnly,
             limit: 100,
             hide_warning: state.hideWarning
         });
@@ -214,7 +283,7 @@ function renderMarketStatus() {
             ` : ''}
         </div>
         <div class="text-xs text-slate-500">
-            실시간 피드: <span class="font-sans text-amber-400 font-semibold">${server_time}</span>
+            실시간 피드: <span id="serverTimeClock" class="font-sans text-amber-400 font-semibold">${server_time}</span>
         </div>
     `;
 }
@@ -252,9 +321,7 @@ function renderIndices() {
             isSessionActive = true;
         }
 
-        const cardStyleClasses = isSessionActive 
-            ? 'border-amber-500/40 bg-gradient-to-br from-[#161B22] to-amber-950/20 shadow-md shadow-amber-500/10' 
-            : 'border-[#2D333B] bg-[#161B22]';
+        const cardStyleClasses = isSessionActive ? 'session-active' : '';
 
         return `
             <div class="index-card ${cardStyleClasses} flex flex-col justify-between h-[215px]">
@@ -307,10 +374,14 @@ function renderIndices() {
 
 // Render Stocks Ranking Table
 function renderStocks(updatedAt) {
-    const container = document.getElementById('stocksTableBody');
+        const container = document.getElementById('stocksTableBody');
+    const metricHeader = document.getElementById('colTradingMetric');
+    if (metricHeader) {
+        metricHeader.innerText = (state.sortFilter === 'trading_volume') ? '거래량' : '거래대금';
+    }
     const updateTimeEl = document.getElementById('tableUpdateTime');
-    if (updateTimeEl && updatedAt) {
-        updateTimeEl.innerText = `순위 · 오늘 ${updatedAt} 기준`;
+    if (updateTimeEl) {
+        updateTimeEl.innerText = '순위';
     }
 
     let filtered = state.stocks;
@@ -334,82 +405,80 @@ function renderStocks(updatedAt) {
         const isUSD = stock.market === 'US';
         const changeInfo = formatChange(stock.change_val, stock.change_rate);
         const formattedPrice = formatCurrency(stock.price, isUSD);
-        const tradingValStr = stock.trading_value_str || formatTradingValue(stock.trading_value);
+        const isVolumeSort = state.sortFilter === 'trading_volume';
+        const metricStr = isVolumeSort 
+            ? `${Number(stock.trading_volume || 0).toLocaleString()}주` 
+            : (stock.trading_value_str || formatTradingValue(stock.trading_value));
 
         return `
             <tr class="stock-row" onclick="openStockDetail('${stock.code}')">
-                <!-- Rank -->
-                <td class="font-bold text-slate-400 text-sm pl-4 w-12 text-center font-sans">
+                <!-- 1. Rank -->
+                <td class="pl-4 pr-1 text-center font-bold text-slate-400 text-sm font-sans whitespace-nowrap">
                     ${stock.rank}
                 </td>
                 
-                <!-- Stock Info -->
-                <td>
-                    <div class="flex items-center gap-3">
-                        <div class="logo-badge shadow-md border border-white/10" style="background-color: ${stock.badge_bg}">
-                            ${stock.badge_text}
+                <!-- 2. Stock Info -->
+                <td class="px-3 text-left truncate">
+                    <div class="flex flex-col">
+                        <div class="flex items-center gap-1.5 truncate">
+                            <span class="font-bold text-slate-100 text-sm hover:text-amber-400 transition cursor-pointer truncate">${stock.name}</span>
+                            ${stock.is_warning ? `<span class="badge-tag bg-amber-950/60 text-amber-400 border border-amber-500/40 text-[10px] shrink-0">투자주의</span>` : ''}
                         </div>
-                        <div>
-                            <div class="flex items-center gap-1.5">
-                                <span class="font-bold text-slate-100 text-sm hover:text-amber-400 transition">${stock.name}</span>
-                                ${stock.is_warning ? `<span class="badge-tag bg-amber-950/60 text-amber-400 border border-amber-500/40 text-[10px]">투자주의</span>` : ''}
-                            </div>
-                            <span class="text-xs text-slate-400 font-sans">${stock.code} · ${stock.market === 'KR' ? '국내' : '해외'}</span>
-                        </div>
+                        <span class="text-xs text-slate-400 font-sans mt-0.5">${stock.code} · ${stock.market === 'KR' ? '국내' : '해외'}</span>
                     </div>
                 </td>
 
-                <!-- Price -->
-                <td class="text-right font-extrabold font-sans text-slate-100 text-sm">
+                <!-- 3. Price -->
+                <td class="px-3 text-right font-extrabold font-sans text-slate-100 text-sm whitespace-nowrap">
                     ${formattedPrice}
                 </td>
 
-                <!-- Change Rate -->
-                <td class="text-right">
-                    <span class="inline-block px-2.5 py-1 rounded-md text-xs font-bold font-sans ${stock.change_rate > 0 ? 'bg-red-500/15 text-[#FF5252] border border-red-500/20' : (stock.change_rate < 0 ? 'bg-blue-500/15 text-[#3B82F6] border border-blue-500/20' : 'bg-slate-800 text-slate-400')}">
-                        ${changeInfo.formattedRate}
-                    </span>
+                <!-- 4. Change Rate (Pure Clean Colored Text Without Box) -->
+                <td class="px-3 text-right whitespace-nowrap font-sans text-sm font-extrabold ${stock.change_rate > 0 ? 'text-[#FF5252]' : (stock.change_rate < 0 ? 'text-[#3B82F6]' : 'text-slate-400')}">
+                    ${changeInfo.formattedRate}
                 </td>
 
-                <!-- Trading Value -->
-                <td class="text-right font-sans text-sm font-semibold text-slate-200">
-                    ${tradingValStr}
+                <!-- 5. Trading Metric -->
+                <td class="px-3 text-right font-sans text-sm font-semibold text-slate-200 whitespace-nowrap">
+                    ${metricStr}
                 </td>
 
-                <!-- Market Cap -->
-                <td class="text-right font-sans text-xs text-slate-400">
+                <!-- 6. Market Cap -->
+                <td class="px-3 text-right font-sans text-xs text-slate-400 whitespace-nowrap">
                     ${formatMarketCap(stock.market_cap)}
                 </td>
 
-                <!-- STRIX Trading Ratio Bar -->
-                <td>
-                    <div class="flex flex-col items-center gap-1">
-                        <div class="ratio-bar-container">
-                            <span class="text-[11px] font-bold text-blue-400 font-sans">${stock.buy_ratio}</span>
-                            <div class="ratio-bar">
-                                <div class="ratio-bar-buy" style="width: ${stock.buy_ratio}%"></div>
-                                <div class="ratio-bar-sell" style="width: ${stock.sell_ratio}%"></div>
-                            </div>
-                            <span class="text-[11px] font-bold text-red-400 font-sans">${stock.sell_ratio}</span>
+                <!-- 7. Execution Strength (Micro Center Gauge Bar) -->
+                <td class="px-2 text-center whitespace-nowrap">
+                    <div class="inline-flex flex-col items-center justify-center gap-1 min-w-[72px]">
+                        <span class="text-xs font-bold font-sans ${stock.execution_strength >= 100 ? 'text-[#FF5252]' : 'text-[#3B82F6]'} tracking-tight">
+                            ${stock.execution_strength ? stock.execution_strength.toFixed(1) + '%' : '100.0%'}
+                        </span>
+                        <div class="w-16 h-1.5 rounded-full bg-[#21262D] relative flex items-center overflow-hidden">
+                            <div class="absolute left-1/2 top-0 bottom-0 w-[1.5px] bg-slate-500 -translate-x-1/2 z-10"></div>
+                            ${(stock.execution_strength || 100) >= 100 ? `
+                                <div class="absolute left-1/2 top-0 bottom-0 bg-[#FF5252] rounded-r-full transition-all duration-300" style="width: ${Math.min(50, (((stock.execution_strength || 100) - 100) / 100) * 50)}%"></div>
+                            ` : `
+                                <div class="absolute right-1/2 top-0 bottom-0 bg-[#3B82F6] rounded-l-full transition-all duration-300" style="width: ${Math.min(50, ((100 - (stock.execution_strength || 100)) / 100) * 50)}%"></div>
+                            `}
                         </div>
                     </div>
                 </td>
 
-                <!-- Sector -->
-                <td>
-                    <span class="badge-tag bg-[#21262D] text-slate-300 border border-[#2D333B] font-medium">
+                <!-- 8. Sector (Pure Clean Single-Line Text Without Box) -->
+                <td class="px-3 text-left whitespace-nowrap">
+                    <span class="text-xs font-semibold text-slate-300 whitespace-nowrap block">
                         ${stock.sector || '-'}
                     </span>
                 </td>
 
-                <!-- AI Summary -->
-                <td class="pr-4 max-w-xs">
+                <!-- 9. AI Summary (Full Text Auto-Wrap Without Truncation) -->
+                <td class="pl-3 pr-4 text-left">
                     ${stock.ai_summary ? `
-                        <div class="flex items-center gap-1.5 text-xs text-slate-300 font-medium truncate" title="${stock.ai_summary}">
-                            <span class="w-1.5 h-1.5 rounded-full bg-amber-400 shadow-sm shadow-amber-400 flex-shrink-0"></span>
-                            <span class="truncate">${stock.ai_summary}</span>
-                        </div>
-                    ` : '<span class="text-slate-600 text-xs">-</span>'}
+                        <span class="text-xs text-slate-300 font-medium leading-snug break-words whitespace-normal block hover:text-amber-300 transition" title="${stock.ai_summary}">
+                            ${stock.ai_summary}
+                        </span>
+                    ` : '<span class="text-slate-600 text-xs font-mono">-</span>'}
                 </td>
             </tr>
         `;
@@ -457,6 +526,14 @@ function closeStockDetail() {
 
 // Filter and Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
+    // Stocks only (exclude ETF) checkbox
+    const chkStocksOnly = document.getElementById('chkStocksOnly');
+    if (chkStocksOnly) {
+        chkStocksOnly.addEventListener('change', (e) => {
+            state.stocksOnly = e.target.checked;
+            fetchStocks();
+        });
+    }
     // Market filter buttons (전체, 국내, 해외)
     document.querySelectorAll('[data-market-filter]').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -500,10 +577,9 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchIndices();
     fetchStocks();
 
-    // 1-second interval
-    setInterval(() => {
-        fetchMarketStatus();
-        fetchIndices();
-        fetchStocks();
-    }, 1000);
+    // Optimal Golden-Standard Live Intervals (Zero Server Strain + High Responsiveness)
+    setInterval(updateClockTick, 1000);    // Smooth 1-second local clock tick
+    setInterval(fetchIndices, 3000);       // Global Indices every 3 seconds
+    setInterval(fetchStocks, 5000);        // Stock Quotes & Execution Strength every 5 seconds
+    setInterval(fetchMarketStatus, 15000); // Market Session Status sync every 15 seconds
 });
