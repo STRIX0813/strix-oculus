@@ -756,19 +756,26 @@ SEED_UNIVERSE_FALLBACK = [
 
 GLOBAL_UNIVERSE_MASTER = SEED_UNIVERSE_FALLBACK
 UNIVERSE_LOCK = threading.Lock()
-LAST_UNIVERSE_REFRESH = 0.0
+LAST_UNIVERSE_REFRESH = time.time()
+IS_BG_REFRESHING = False
 
-# Asynchronous Bootstrapper
+# Safe Single-Threaded Background Bootstrapper
 def async_initial_bootstrap():
-    global GLOBAL_UNIVERSE_MASTER, LAST_UNIVERSE_REFRESH
+    global GLOBAL_UNIVERSE_MASTER, LAST_UNIVERSE_REFRESH, IS_BG_REFRESHING
+    if IS_BG_REFRESHING:
+        return
+    IS_BG_REFRESHING = True
     try:
+        time.sleep(1.0)
         fresh = build_full_market_universe()
-        if len(fresh) > 100:
+        if len(fresh) > 50:
             with UNIVERSE_LOCK:
                 GLOBAL_UNIVERSE_MASTER = fresh
                 LAST_UNIVERSE_REFRESH = time.time()
     except Exception:
         pass
+    finally:
+        IS_BG_REFRESHING = False
 
 threading.Thread(target=async_initial_bootstrap, daemon=True).start()
 
@@ -777,17 +784,21 @@ def get_genuine_rankings(market: str, sort_type: str, limit: int = 100, query: s
     global GLOBAL_UNIVERSE_MASTER, LAST_UNIVERSE_REFRESH
     now_ts = time.time()
     
-    if now_ts - LAST_UNIVERSE_REFRESH > 60:
+    global IS_BG_REFRESHING
+    if (now_ts - LAST_UNIVERSE_REFRESH > 60) and not IS_BG_REFRESHING:
         LAST_UNIVERSE_REFRESH = now_ts
+        IS_BG_REFRESHING = True
         def _bg_refresh():
-            global GLOBAL_UNIVERSE_MASTER
+            global GLOBAL_UNIVERSE_MASTER, IS_BG_REFRESHING
             try:
                 fresh = build_full_market_universe()
-                if len(fresh) > 1000:
+                if len(fresh) > 50:
                     with UNIVERSE_LOCK:
                         GLOBAL_UNIVERSE_MASTER = fresh
             except Exception:
                 pass
+            finally:
+                IS_BG_REFRESHING = False
         threading.Thread(target=_bg_refresh, daemon=True).start()
 
     with UNIVERSE_LOCK:
@@ -950,6 +961,10 @@ def get_stocks_ranking(
 
 os.makedirs('static', exist_ok=True)
 app.mount('/static', StaticFiles(directory='static'), name='static')
+
+@app.get('/healthz')
+def healthz():
+    return {'status': 'ok'}
 
 @app.get('/')
 def serve_index():
