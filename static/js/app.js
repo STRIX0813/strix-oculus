@@ -1,4 +1,48 @@
-﻿let state = {
+function formatMarketCap(cap) {
+    if (!cap) return '-';
+    if (typeof cap === 'string') {
+        if (cap.includes('조원') || cap.includes('억원') || cap.includes('$') || cap.includes('T') || cap.includes('B') || cap.includes('M')) {
+            return cap;
+        }
+        if (cap.includes('조')) {
+            const m = cap.match(/([\d,.]+)\s*조(?:\s*([\d,.]+)\s*억)?/);
+            if (m) {
+                const jo = parseFloat(m[1].replace(/,/g, ''));
+                const eok = m[2] ? parseFloat(m[2].replace(/,/g, '')) : 0;
+                return `${(jo + (eok / 10000)).toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}조원`;
+            }
+        } else if (cap.includes('억')) {
+            const m = cap.match(/([\d,.]+)\s*억/);
+            if (m) {
+                const eok = parseFloat(m[1].replace(/,/g, ''));
+                if (eok >= 10000) {
+                    return `${(eok / 10000).toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}조원`;
+                }
+                return `${Math.round(eok).toLocaleString('ko-KR')}억원`;
+            }
+        }
+    }
+    const num = Number(cap);
+    if (!isNaN(num)) {
+        if (num >= 10000) {
+            return `${(num / 10000).toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}조원`;
+        }
+        return `${Math.round(num).toLocaleString('ko-KR')}억원`;
+    }
+    return cap;
+}
+
+function formatTradingValue(val) {
+    if (!val || val === 0) return '0원';
+    const num = Number(val);
+    if (isNaN(num)) return val;
+    if (num >= 10000) {
+        return `${(num / 10000).toFixed(1)}조원`;
+    }
+    return `${Math.round(num).toLocaleString()}억원`;
+}
+
+let state = {
     marketFilter: 'all',
     sortFilter: 'trading_value',
     hideWarning: false,
@@ -128,8 +172,12 @@ async function fetchStocks() {
         const params = new URLSearchParams({
             market: state.marketFilter,
             sort: state.sortFilter,
+            limit: 100,
             hide_warning: state.hideWarning
         });
+        if (state.searchQuery && state.searchQuery.trim()) {
+            params.append('q', state.searchQuery.trim());
+        }
         const res = await fetch(`/api/stocks/ranking?${params}`);
         const data = await res.json();
         state.stocks = data.stocks;
@@ -286,7 +334,7 @@ function renderStocks(updatedAt) {
         const isUSD = stock.market === 'US';
         const changeInfo = formatChange(stock.change_val, stock.change_rate);
         const formattedPrice = formatCurrency(stock.price, isUSD);
-        const tradingValStr = `${stock.trading_value.toLocaleString()}억원`;
+        const tradingValStr = stock.trading_value_str || formatTradingValue(stock.trading_value);
 
         return `
             <tr class="stock-row" onclick="openStockDetail('${stock.code}')">
@@ -330,7 +378,7 @@ function renderStocks(updatedAt) {
 
                 <!-- Market Cap -->
                 <td class="text-right font-sans text-xs text-slate-400">
-                    ${stock.market_cap}
+                    ${formatMarketCap(stock.market_cap)}
                 </td>
 
                 <!-- STRIX Trading Ratio Bar -->
@@ -386,8 +434,8 @@ function openStockDetail(code) {
     rateEl.innerText = `${changeInfo.formattedVal} (${changeInfo.formattedRate})`;
     rateEl.className = `text-sm font-bold ${changeInfo.colorClass}`;
 
-    document.getElementById('modalTradingValue').innerText = `${stock.trading_value.toLocaleString()} 억원`;
-    document.getElementById('modalMarketCap').innerText = stock.market_cap;
+    document.getElementById('modalTradingValue').innerText = formatTradingValue(stock.trading_value);
+    document.getElementById('modalMarketCap').innerText = formatMarketCap(stock.market_cap);
     document.getElementById('modalSector').innerText = stock.sector;
     document.getElementById('modalAiSummary').innerText = stock.ai_summary || '실시간 주요 이슈 수집 중';
 

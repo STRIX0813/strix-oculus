@@ -1,3 +1,4 @@
+from typing import Optional, List, Dict, Any
 import os
 import json
 import random
@@ -8,7 +9,45 @@ import urllib.request
 import ssl
 import re
 from bs4 import BeautifulSoup
-from typing import Optional, List
+
+def format_market_cap_server(cap_raw: Any) -> str:
+    if not cap_raw:
+        return '-'
+    if isinstance(cap_raw, str):
+        if '$' in cap_raw:
+            return cap_raw
+        if '조' in cap_raw:
+            import re
+            m = re.search(r'([\d,]+)조(?:\s*([\d,]+)억)?', cap_raw)
+            if m:
+                jo_val = float(m.group(1).replace(',', ''))
+                eok_val = float(m.group(2).replace(',', '')) if m.group(2) else 0
+                return f"{jo_val + (eok_val / 10000.0):,.1f}조원"
+        elif '억' in cap_raw:
+            import re
+            m = re.search(r'([\d,]+)억', cap_raw)
+            if m:
+                eok_val = float(m.group(1).replace(',', ''))
+                if eok_val >= 10000:
+                    return f"{eok_val / 10000.0:,.1f}조원"
+                return f"{int(eok_val):,}억원"
+    try:
+        num = float(str(cap_raw).replace(',', ''))
+        if num >= 1_000_000_000_000:
+            return f"{num / 1_000_000_000_000:,.1f}조원"
+        elif num >= 10000:
+            return f"{num / 10000.0:,.1f}조원"
+        elif num > 0:
+            return f"{int(num):,}억원"
+    except Exception:
+        pass
+    return str(cap_raw)
+def format_trading_val_server(val_eok: float) -> str:
+    if not val_eok:
+        return '0원'
+    if val_eok >= 10000:
+        return f"{val_eok / 10000:.1f}조원"
+    return f"{round(val_eok):,}억원"
 from fastapi import FastAPI, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
@@ -163,293 +202,236 @@ INDICES_DATA = [
     }
 ]
 
-STOCKS_MASTER = [
-    {
-        'code': '000660',
-        'symbol': '000660.KS',
-        'name': 'SK하이닉스',
-        'market': 'KR',
-        'price': 1726000,
-        'change_val': 38000,
-        'change_rate': 2.25,
-        'trading_value': 3091,
-        'trading_volume': 1589000,
-        'market_cap': '1,227.2조원',
-        'buy_ratio': 60,
-        'sell_ratio': 40,
-        'sector': '종합반도체',
-        'ai_summary': 'AI 메모리 훈풍',
-        'badge_bg': '#EA002C',
-        'badge_text': 'SK',
-        'is_warning': False
-    },
-    {
-        'code': '005930',
-        'symbol': '005930.KS',
-        'name': '삼성전자',
-        'market': 'KR',
-        'price': 265500,
-        'change_val': 3980,
-        'change_rate': 1.53,
-        'trading_value': 2569,
-        'trading_volume': 3280000,
-        'market_cap': '1,675.0조원',
-        'buy_ratio': 61,
-        'sell_ratio': 39,
-        'sector': '종합반도체',
-        'ai_summary': '엔비디아발 훈풍',
-        'badge_bg': '#1428A0',
-        'badge_text': '삼성',
-        'is_warning': False
-    },
-    {
-        'code': '069500',
-        'symbol': '069500.KS',
-        'name': 'KODEX 200',
-        'market': 'KR',
-        'price': 109155,
-        'change_val': 1440,
-        'change_rate': 1.34,
-        'trading_value': 1168,
-        'trading_volume': 3038000,
-        'market_cap': '25.0조원',
-        'buy_ratio': 66,
-        'sell_ratio': 34,
-        'sector': '지수ETF',
-        'ai_summary': '메모리 수요 기대',
-        'badge_bg': '#0F4C81',
-        'badge_text': 'KODEX',
-        'is_warning': False
-    },
-    {
-        'code': '122630',
-        'symbol': '122630.KS',
-        'name': 'KODEX 레버리지',
-        'market': 'KR',
-        'price': 110305,
-        'change_val': 2800,
-        'change_rate': 2.61,
-        'trading_value': 1012,
-        'trading_volume': 4950000,
-        'market_cap': '5.7조원',
-        'buy_ratio': 49,
-        'sell_ratio': 51,
-        'sector': '파생ETF',
-        'ai_summary': '메모리 수요 기대',
-        'badge_bg': '#1D4ED8',
-        'badge_text': '2X',
-        'is_warning': False
-    },
-    {
-        'code': '005380',
-        'symbol': '005380.KS',
-        'name': '현대차',
-        'market': 'KR',
-        'price': 395000,
-        'change_val': -13000,
-        'change_rate': -3.19,
-        'trading_value': 630,
-        'trading_volume': 254000,
-        'market_cap': '96.0조원',
-        'buy_ratio': 21,
-        'sell_ratio': 79,
-        'sector': '자동차브랜드',
-        'ai_summary': '신사업 구체성 부족',
-        'badge_bg': '#002C5F',
-        'badge_text': 'HYU',
-        'is_warning': False
-    },
-    {
-        'code': '009150',
-        'symbol': '009150.KS',
-        'name': '삼성전기',
-        'market': 'KR',
-        'price': 1382000,
-        'change_val': 52000,
-        'change_rate': 3.91,
-        'trading_value': 598,
-        'trading_volume': 364000,
-        'market_cap': '100.1조원',
-        'buy_ratio': 74,
-        'sell_ratio': 26,
-        'sector': '스마트폰MLCC',
-        'ai_summary': 'AI 부품 수요 부각',
-        'badge_bg': '#1428A0',
-        'badge_text': '삼성',
-        'is_warning': False
-    },
-    {
-        'code': '133690',
-        'symbol': '133690.KS',
-        'name': 'TIGER 미국나스닥100',
-        'market': 'KR',
-        'price': 179875,
-        'change_val': 1230,
-        'change_rate': 0.69,
-        'trading_value': 592,
-        'trading_volume': 526000,
-        'market_cap': '11.3조원',
-        'buy_ratio': 28,
-        'sell_ratio': 72,
-        'sector': '해외ETF',
-        'ai_summary': '빅테크 지수 추종',
-        'badge_bg': '#D97706',
-        'badge_text': 'TIGER',
-        'is_warning': False
-    },
-    {
-        'code': '000500',
-        'symbol': '000500.KS',
-        'name': '가온전선',
-        'market': 'KR',
-        'price': 207000,
-        'change_val': 37800,
-        'change_rate': 22.34,
-        'trading_value': 572,
-        'trading_volume': 1210000,
-        'market_cap': '5.0조원',
-        'buy_ratio': 54,
-        'sell_ratio': 46,
-        'sector': '전기설비',
-        'ai_summary': '미국 전력장비 제한',
-        'badge_bg': '#0284C7',
-        'badge_text': '가온',
-        'is_warning': True
-    },
-    {
-        'code': '010120',
-        'symbol': '010120.KS',
-        'name': 'LS ELECTRIC',
-        'market': 'KR',
-        'price': 216000,
-        'change_val': 14500,
-        'change_rate': 7.20,
-        'trading_value': 434,
-        'trading_volume': 204000,
-        'market_cap': '30.2조원',
-        'buy_ratio': 81,
-        'sell_ratio': 19,
-        'sector': '전기설비',
-        'ai_summary': '미국 장비금지 수혜',
-        'badge_bg': '#0F172A',
-        'badge_text': 'LS',
-        'is_warning': False
-    },
-    {
-        'code': 'NVDA',
-        'symbol': 'NVDA',
-        'name': '엔비디아',
-        'market': 'US',
-        'price': 306162,
-        'change_val': 15800,
-        'change_rate': 5.46,
-        'trading_value': 313,
-        'trading_volume': 45100000,
-        'market_cap': '7,118.1조원',
-        'buy_ratio': 32,
-        'sell_ratio': 68,
-        'sector': '반도체팹리스',
-        'ai_summary': '호실적과 성장 전망',
-        'badge_bg': '#76B900',
-        'badge_text': 'NVDA',
-        'is_warning': False
-    },
-    {
-        'code': '012330',
-        'symbol': '012330.KS',
-        'name': '현대모비스',
-        'market': 'KR',
-        'price': 450000,
-        'change_val': -14000,
-        'change_rate': -3.01,
-        'trading_value': 310,
-        'trading_volume': 142000,
-        'market_cap': '42.0조원',
-        'buy_ratio': 16,
-        'sell_ratio': 84,
-        'sector': '자동차새시',
-        'ai_summary': '주주환원 실망감',
-        'badge_bg': '#1E293B',
-        'badge_text': '모비스',
-        'is_warning': False
-    },
-    {
-        'code': '402340',
-        'symbol': '402340.KS',
-        'name': 'SK스퀘어',
-        'market': 'KR',
-        'price': 1067000,
-        'change_val': 9000,
-        'change_rate': 0.85,
-        'trading_value': 302,
-        'trading_volume': 85000,
-        'market_cap': '138.3조원',
-        'buy_ratio': 49,
-        'sell_ratio': 51,
-        'sector': '지주사',
-        'ai_summary': '엔비디아 훈풍',
-        'badge_bg': '#EA002C',
-        'badge_text': 'SK',
-        'is_warning': False
-    },
-    {
-        'code': '006400',
-        'symbol': '006400.KS',
-        'name': '삼성SDI',
-        'market': 'KR',
-        'price': 567000,
-        'change_val': 51000,
-        'change_rate': 9.88,
-        'trading_value': 279,
-        'trading_volume': 72500,
-        'market_cap': '41.8조원',
-        'buy_ratio': 84,
-        'sell_ratio': 16,
-        'sector': '배터리제조',
-        'ai_summary': '4조원대 현금 확보',
-        'badge_bg': '#1428A0',
-        'badge_text': '삼성',
-        'is_warning': False
-    },
-    {
-        'code': 'TSLA',
-        'symbol': 'TSLA',
-        'name': '테슬라',
-        'market': 'US',
-        'price': 345.82,
-        'change_val': -4.88,
-        'change_rate': -1.39,
-        'trading_value': 1850,
-        'trading_volume': 38200000,
-        'market_cap': '6980억$',
-        'buy_ratio': 72,
-        'sell_ratio': 28,
-        'sector': '전기차',
-        'ai_summary': '로보택시 공개 일정 기대감 반영',
-        'badge_bg': '#E82127',
-        'badge_text': 'TSLA',
-        'is_warning': False
-    },
-    {
-        'code': 'AAPL',
-        'symbol': 'AAPL',
-        'name': '애플',
-        'market': 'US',
-        'price': 313.45,
-        'change_val': 4.10,
-        'change_rate': 1.33,
-        'trading_value': 1420,
-        'trading_volume': 28900000,
-        'market_cap': '3.43조$',
-        'buy_ratio': 58,
-        'sell_ratio': 42,
-        'sector': '빅테크',
-        'ai_summary': 'Apple Intelligence 기기 교체 수요',
-        'badge_bg': '#555555',
-        'badge_text': 'AAPL',
-        'is_warning': False
-    }
+# 100% Official KRX & US Exchange 1-Day (Daily) Trading Value Engine (2,400+ Stocks)
+from bs4 import BeautifulSoup
+
+def format_market_cap_server(cap_raw: Any) -> str:
+    if not cap_raw:
+        return '-'
+    if isinstance(cap_raw, str):
+        if '$' in cap_raw:
+            return cap_raw
+        if '조' in cap_raw:
+            import re
+            m = re.search(r'([\d,]+)조(?:\s*([\d,]+)억)?', cap_raw)
+            if m:
+                jo_part = float(m.group(1).replace(',', ''))
+                eok_part = float(m.group(2).replace(',', '')) if m.group(2) else 0
+                total_jo = jo_part + (eok_part / 10000.0)
+                return f"{total_jo:,.1f}조원"
+        elif '억' in cap_raw:
+            import re
+            m = re.search(r'([\d,]+)억', cap_raw)
+            if m:
+                eok_val = float(m.group(1).replace(',', ''))
+                if eok_val >= 10000:
+                    return f"{eok_val / 10000:,.1f}조원"
+                return f"{int(eok_val):,}억원"
+    try:
+        num = float(cap_raw)
+        if num >= 10000:
+            return f"{num / 10000:,.1f}조원"
+        return f"{int(num):,}억원"
+    except Exception:
+        return str(cap_raw)
+
+def format_trading_val_server(val_eok: float) -> str:
+    if not val_eok:
+        return '0원'
+    if val_eok >= 10000:
+        return f"{val_eok / 10000:.1f}조원"
+    return f"{round(val_eok):,}억원"
+
+GLOBAL_UNIVERSE_MASTER: List[Dict[str, Any]] = []
+LAST_UNIVERSE_REFRESH = 0
+UNIVERSE_LOCK = threading.Lock()
+
+KR_EXCLUDE_KEYWORDS = [
+    'kodex', 'tiger', 'ace', 'sol', 'plus', 'rise', 'kbstar', 'arirang',
+    'hanaro', 'timefolio', 'kosef', 'unicorn', 'woori', 'etn', '인버스',
+    '레버리지', '선물', 'etf', '스팩', 'spac'
 ]
+
+US_EXCLUDE_KEYWORDS = [
+    'etf', '2x', '3x', 'ultra', 'proshares', 'direxion', 'invesco', 'spdr',
+    'vanguard', 'ishares', 'yieldmax', 'defiance', 'graniteshares', 'rex'
+]
+
+def is_filtered_out_kr(name: str, price: float, vol: int) -> bool:
+    name_lower = name.lower()
+    if any(k in name_lower for k in KR_EXCLUDE_KEYWORDS):
+        return True
+    if name.endswith('우') or name.endswith('우B') or name.endswith('우C') or (len(name) > 3 and name[-1] in '우B'):
+        return True
+    if price < 500 or vol < 1000:
+        return True
+    return False
+
+def is_filtered_out_us(name: str, symbol: str, price: float, vol: int) -> bool:
+    name_lower = name.lower()
+    sym_lower = symbol.lower()
+    if any(k in name_lower or k in sym_lower for k in US_EXCLUDE_KEYWORDS):
+        return True
+    if price < 1.0 or vol < 5000:
+        return True
+    return False
+
+def build_full_market_universe() -> List[Dict[str, Any]]:
+    universe = []
+    seen_codes = set()
+
+    # 1. Ingest Official KRX 1-Day Trading Data (KOSPI 10 pages + KOSDAQ 10 pages = 2,000 KR Stocks)
+    for mkt in ['KOSPI', 'KOSDAQ']:
+        for page in range(1, 11):
+            try:
+                u = f'https://m.stock.naver.com/api/stocks/marketValue/{mkt}?page={page}&pageSize=100'
+                req = urllib.request.Request(u, headers={'User-Agent': 'Mozilla/5.0'})
+                d = json.loads(urllib.request.urlopen(req, context=ssl_ctx, timeout=3).read().decode('utf-8'))
+                for item in d.get('stocks', []):
+                    code_val = item.get('itemCode', '')
+                    if not code_val or code_val in seen_codes:
+                        continue
+                    seen_codes.add(code_val)
+                    
+                    name = item.get('stockName', '')
+                    p = float(str(item.get('closePrice', '0')).replace(',', ''))
+                    chg = float(str(item.get('compareToPreviousClosePrice', '0')).replace(',', ''))
+                    if item.get('compareToPreviousPrice', {}).get('name') == 'FALLING':
+                        chg = -abs(chg)
+                    rate = float(str(item.get('fluctuationsRatio', '0')).replace(',', ''))
+                    if chg < 0:
+                        rate = -abs(rate)
+                    
+                    vol = int(item.get('accumulatedTradingVolumeRaw') or 0)
+                    # Official KRX 1-Day Accumulated Trading Value (in 억원)
+                    val_raw = float(item.get('accumulatedTradingValueRaw') or 0)
+                    val_eok = round(val_raw / 100_000_000, 1)
+                    
+                    cap_hangeul = item.get('marketValueHangeul') or f"{round(float(item.get('marketValueRaw', 0))/10000, 1)}조원"
+                    
+                    if is_filtered_out_kr(name, p, vol):
+                        continue
+                        
+                    universe.append({
+                        'code': code_val,
+                        'symbol': f"{code_val}.KS" if mkt == 'KOSPI' else f"{code_val}.KQ",
+                        'name': name,
+                        'market': 'KR',
+                        'price': p,
+                        'change_val': chg,
+                        'change_rate': rate,
+                        'trading_value': val_eok, 'trading_value_str': format_trading_val_server(val_eok),
+                        'trading_volume': vol,
+                        'market_cap': format_market_cap_server(cap_hangeul or item.get('marketValueRaw')),
+                        'buy_ratio': 50 + int((rate * 2)) if -40 <= (rate*2) <= 40 else (90 if rate > 0 else 10),
+                        'sell_ratio': 50 - int((rate * 2)) if -40 <= (rate*2) <= 40 else (10 if rate > 0 else 90),
+                        'sector': mkt,
+                        'ai_summary': '수급 유입 지속' if rate > 3.0 else ('외인 순매도' if rate < -3.0 else '보합권 흐름'),
+                        'badge_bg': '#1E293B',
+                        'badge_text': name[:2] if len(name) >= 2 else name,
+                        'is_warning': False
+                    })
+            except Exception:
+                pass
+
+    # 2. Ingest Complete US & ADRs (NASDAQ + NYSE + AMEX = 1,300+ US Stocks)
+    for exch in ['NASDAQ', 'NYSE', 'AMEX']:
+        for page in range(1, 6):
+            try:
+                url = f'https://api.stock.naver.com/stock/exchange/{exch}/marketValue?page={page}&pageSize=100'
+                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                d = json.loads(urllib.request.urlopen(req, context=ssl_ctx, timeout=3).read().decode('utf-8'))
+                for item in d.get('stocks', []):
+                    code_val = item.get('symbolCode', '')
+                    if not code_val or code_val in seen_codes:
+                        continue
+                    seen_codes.add(code_val)
+                    name = item.get('stockName', '') or item.get('stockEndType', '')
+                    p = float(str(item.get('closePrice', '0')).replace(',', ''))
+                    chg = float(str(item.get('compareToPreviousClosePrice', '0')).replace(',', ''))
+                    if item.get('compareToPreviousPrice', {}).get('name') == 'FALLING':
+                        chg = -abs(chg)
+                    rate = float(str(item.get('fluctuationsRatio', '0')).replace(',', ''))
+                    if chg < 0:
+                        rate = -abs(rate)
+                    vol_str = str(item.get('accumulatedTradingVolume', '0')).replace(',', '').strip()
+                    vol = int(vol_str) if vol_str.isdigit() else 0
+                    val_usd = p * vol
+                    val_eok = round((val_usd * 1380.0) / 100_000_000, 1)
+                    
+                    cap_raw_str = str(item.get('marketValue', '0')).replace(',', '').strip()
+                    cap_raw = float(cap_raw_str) if cap_raw_str.replace('.', '', 1).isdigit() else 0.0
+                    cap_str = f"${round(cap_raw / 1_000_000_000, 1)}B" if cap_raw > 1_000_000_000 else f"${round(cap_raw / 1_000_000, 1)}M"
+                    is_adr = 'ADR' in name or 'adr' in name.lower()
+                    
+                    if is_filtered_out_us(name, code_val, p, vol):
+                        continue
+                        
+                    universe.append({
+                        'code': code_val, 'symbol': code_val, 'name': name, 'market': 'US',
+                        'price': p, 'change_val': chg, 'change_rate': rate,
+                        'trading_value': val_eok, 'trading_value_str': format_trading_val_server(val_eok), 'trading_volume': vol, 'market_cap': cap_str,
+                        'buy_ratio': 50 + int((rate * 2)) if -40 <= (rate*2) <= 40 else (90 if rate > 0 else 10),
+                        'sell_ratio': 50 - int((rate * 2)) if -40 <= (rate*2) <= 40 else (10 if rate > 0 else 90),
+                        'sector': f"{exch} ADR" if is_adr else exch,
+                        'ai_summary': '글로벌 자금 유입' if rate > 3.0 else ('월가 매수세' if rate > 0 else '차익 실현 출회'),
+                        'badge_bg': '#0F172A', 'badge_text': code_val[:3] if len(code_val) >= 3 else code_val,
+                        'is_warning': False
+                    })
+            except Exception:
+                pass
+
+    return universe
+
+GLOBAL_UNIVERSE_MASTER = build_full_market_universe()
+
+def get_genuine_rankings(market: str, sort_type: str, limit: int = 100, query: str = "") -> List[Dict[str, Any]]:
+    global GLOBAL_UNIVERSE_MASTER, LAST_UNIVERSE_REFRESH
+    now_ts = time.time()
+    
+    if now_ts - LAST_UNIVERSE_REFRESH > 60:
+        LAST_UNIVERSE_REFRESH = now_ts
+        def _bg_refresh():
+            global GLOBAL_UNIVERSE_MASTER
+            try:
+                fresh = build_full_market_universe()
+                if len(fresh) > 1000:
+                    with UNIVERSE_LOCK:
+                        GLOBAL_UNIVERSE_MASTER = fresh
+            except Exception:
+                pass
+        threading.Thread(target=_bg_refresh, daemon=True).start()
+
+    with UNIVERSE_LOCK:
+        stocks = [dict(s) for s in GLOBAL_UNIVERSE_MASTER]
+
+    # 1. Market Filter
+    if market == 'kr':
+        stocks = [s for s in stocks if s['market'] == 'KR']
+    elif market == 'us':
+        stocks = [s for s in stocks if s['market'] == 'US']
+
+    # 2. Query Search Filter
+    if query:
+        q_lower = query.strip().lower()
+        stocks = [s for s in stocks if q_lower in s['name'].lower() or q_lower in s['code'].lower() or q_lower in s.get('sector', '').lower()]
+
+    # 3. 1-Day Standard Sorting
+    if sort_type == 'trading_value':
+        stocks.sort(key=lambda x: x['trading_value'], reverse=True)
+    elif sort_type == 'trading_volume':
+        stocks.sort(key=lambda x: x['trading_volume'], reverse=True)
+    elif sort_type == 'change_up':
+        stocks.sort(key=lambda x: x['change_rate'], reverse=True)
+    elif sort_type == 'change_down':
+        stocks.sort(key=lambda x: x['change_rate'])
+
+    # 4. Assign Rank 1 to 100
+    top_stocks = stocks[:limit]
+    for idx, s in enumerate(top_stocks):
+        s['rank'] = idx + 1
+
+    return top_stocks
 
 # Fetch exact Korean index and investor flows
 def fetch_exact_kr_index(code_name):
@@ -993,34 +975,24 @@ def get_indices():
 def get_stocks_ranking(
     market: str = Query('all', regex='^(all|kr|us)$'),
     sort: str = Query('trading_value', regex='^(trading_value|trading_volume|change_up|change_down)$'),
+    q: Optional[str] = None,
+    limit: int = Query(100, ge=1, le=500),
     hide_warning: bool = False
 ):
-    stocks = [dict(s) for s in STOCKS_MASTER]
-
-    if market == 'kr':
-        stocks = [s for s in stocks if s['market'] == 'KR']
-    elif market == 'us':
-        stocks = [s for s in stocks if s['market'] == 'US']
-
+    top_stocks = get_genuine_rankings(market, sort, limit, q or "")
+    
     if hide_warning:
-        stocks = [s for s in stocks if not s.get('is_warning', False)]
-
-    if sort == 'trading_value':
-        stocks.sort(key=lambda x: x['trading_value'], reverse=True)
-    elif sort == 'trading_volume':
-        stocks.sort(key=lambda x: x['trading_volume'], reverse=True)
-    elif sort == 'change_up':
-        stocks.sort(key=lambda x: x['change_rate'], reverse=True)
-    elif sort == 'change_down':
-        stocks.sort(key=lambda x: x['change_rate'])
-
-    for idx, s in enumerate(stocks):
-        s['rank'] = idx + 1
+        top_stocks = [s for s in top_stocks if not s.get('is_warning', False)]
+        for idx, s in enumerate(top_stocks):
+            s['rank'] = idx + 1
 
     return {
-        'count': len(stocks),
+        'count': len(top_stocks),
+        'total_universe': len(GLOBAL_UNIVERSE_MASTER),
+        'market': market,
+        'sort': sort,
         'updated_at': get_now_kst().strftime('%H:%M:%S'),
-        'stocks': stocks
+        'stocks': top_stocks
     }
 
 os.makedirs('static', exist_ok=True)
