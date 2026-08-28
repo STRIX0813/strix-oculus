@@ -105,7 +105,7 @@ def fetch_naver_index_chart(code_name: str) -> List[float]:
         is_dom = code_name in ['KOSPI', 'KOSDAQ', 'FUT']
         url = f'https://api.stock.naver.com/chart/{"domestic" if is_dom else "foreign"}/index/{code_name}?periodType=day'
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
-        d = json.loads(urllib.request.urlopen(req, context=ssl_ctx, timeout=3).read().decode('utf-8'))
+        d = json.loads(urllib.request.urlopen(req, context=ssl_ctx, timeout=0.8).read().decode('utf-8'))
         pts = [round(float(item.get('currentPrice') or item.get('closePrice')), 2) for item in d.get('priceInfos', []) if item.get('currentPrice') or item.get('closePrice')]
         if len(pts) >= 50:
             step = (len(pts) - 1) / 49.0
@@ -120,7 +120,7 @@ def fetch_btc_real_candles():
     try:
         u = 'https://api.upbit.com/v1/candles/minutes/15?market=KRW-BTC&count=50'
         req = urllib.request.Request(u, headers={'User-Agent': 'Mozilla/5.0'})
-        d = json.loads(urllib.request.urlopen(req, context=ssl_ctx, timeout=2).read().decode('utf-8'))
+        d = json.loads(urllib.request.urlopen(req, context=ssl_ctx, timeout=0.8).read().decode('utf-8'))
         return [c['trade_price'] for c in reversed(d)]
     except Exception:
         return []
@@ -146,7 +146,7 @@ def fetch_kr_investor_trend(code_name: str) -> Optional[Dict[str, int]]:
     try:
         page_url = f'https://finance.naver.com/sise/sise_index.naver?code={code_name}'
         req_page = urllib.request.Request(page_url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
-        html = urllib.request.urlopen(req_page, context=ssl_ctx, timeout=3).read().decode('cp949', errors='ignore')
+        html = urllib.request.urlopen(req_page, context=ssl_ctx, timeout=0.8).read().decode('cp949', errors='ignore')
         soup = BeautifulSoup(html, 'html.parser')
         dl_tags = soup.find_all('dl')
         for dl in dl_tags:
@@ -605,7 +605,7 @@ def build_full_market_universe():
             try:
                 u = f'https://m.stock.naver.com/api/stocks/marketValue/{mkt}?page={page}&pageSize=100'
                 req = urllib.request.Request(u, headers={'User-Agent': 'Mozilla/5.0'})
-                d = json.loads(urllib.request.urlopen(req, context=ssl_ctx, timeout=3).read().decode('utf-8'))
+                d = json.loads(urllib.request.urlopen(req, context=ssl_ctx, timeout=0.8).read().decode('utf-8'))
                 for item in d.get('stocks', []):
                     code_val = item.get('itemCode', '')
                     if not code_val or code_val in seen_codes:
@@ -656,7 +656,7 @@ def build_full_market_universe():
         try:
             url_us = f'https://api.stock.naver.com/stock/exchange/NASDAQ/marketValue?page={page}&pageSize=100'
             req_us = urllib.request.Request(url_us, headers={'User-Agent': 'Mozilla/5.0'})
-            d_us = json.loads(urllib.request.urlopen(req_us, context=ssl_ctx, timeout=3).read().decode('utf-8'))
+            d_us = json.loads(urllib.request.urlopen(req_us, context=ssl_ctx, timeout=0.8).read().decode('utf-8'))
             for item in d_us.get('stocks', []):
                 code_val = item.get('symbolCode', '') or item.get('stockCode', '')
                 if not code_val or code_val in seen_codes:
@@ -703,7 +703,7 @@ def build_full_market_universe():
     try:
         url_etf = 'https://finance.naver.com/api/sise/etfItemList.nhn'
         req_etf = urllib.request.Request(url_etf, headers={'User-Agent': 'Mozilla/5.0'})
-        d_etf = json.loads(urllib.request.urlopen(req_etf, context=ssl_ctx, timeout=3).read().decode('cp949', errors='ignore'))
+        d_etf = json.loads(urllib.request.urlopen(req_etf, context=ssl_ctx, timeout=0.8).read().decode('cp949', errors='ignore'))
         for item in d_etf.get('result', {}).get('etfItemList', []):
             code_val = item.get('itemcode', '')
             if not code_val or code_val in seen_codes:
@@ -750,8 +750,18 @@ SEED_UNIVERSE_FALLBACK = [
     {'code': '000660', 'symbol': '000660.KS', 'name': 'SK하이닉스', 'market': 'KR', 'price': 178500.0, 'change_val': -3500.0, 'change_rate': -1.92, 'trading_value': 12450.0, 'trading_value_str': '1.2조원', 'trading_volume': 6974850, 'market_cap': '130.0조원', 'execution_strength': 76.9, 'buy_ratio': 46, 'sell_ratio': 54, 'sector': '종합반도체', 'ai_summary': '대중 수출 규제 우려', 'badge_bg': '#0F172A', 'badge_text': '코스피', 'is_warning': False, 'is_etf': False},
     {'code': '005930', 'symbol': '005930.KS', 'name': '삼성전자', 'market': 'KR', 'price': 68500.0, 'change_val': -900.0, 'change_rate': -1.30, 'trading_value': 9850.0, 'trading_value_str': '9,850억원', 'trading_volume': 14379410, 'market_cap': '408.9조원', 'execution_strength': 82.4, 'buy_ratio': 47, 'sell_ratio': 53, 'sector': '종합반도체', 'ai_summary': '레거시 D램 감산', 'badge_bg': '#0F172A', 'badge_text': '코스피', 'is_warning': False, 'is_etf': False},
     {'code': '009150', 'symbol': '009150.KS', 'name': '삼성전기', 'market': 'KR', 'price': 142000.0, 'change_val': 3500.0, 'change_rate': 2.53, 'trading_value': 4520.0, 'trading_value_str': '4,520억원', 'trading_volume': 3183090, 'market_cap': '10.6조원', 'execution_strength': 113.5, 'buy_ratio': 55, 'sell_ratio': 45, 'sector': '스마트폰MLCC', 'ai_summary': 'AI 가속기 MLCC 공급', 'badge_bg': '#0F172A', 'badge_text': '코스피', 'is_warning': False, 'is_etf': False},
+    {'code': '002990', 'symbol': '002990.KS', 'name': '금호건설', 'market': 'KR', 'price': 3450.0, 'change_val': 380.0, 'change_rate': 12.38, 'trading_value': 3980.0, 'trading_value_str': '3,980억원', 'trading_volume': 11536200, 'market_cap': '1,450억원', 'execution_strength': 164.2, 'buy_ratio': 68, 'sell_ratio': 32, 'sector': '건설/토목엔지니어링', 'ai_summary': '공공토목 대형 수주', 'badge_bg': '#0F172A', 'badge_text': '코스피', 'is_warning': False, 'is_etf': False},
+    {'code': '005935', 'symbol': '005935.KS', 'name': '삼성전자우', 'market': 'KR', 'price': 54200.0, 'change_val': -600.0, 'change_rate': -1.09, 'trading_value': 2850.0, 'trading_value_str': '2,850억원', 'trading_volume': 5258000, 'market_cap': '44.6조원', 'execution_strength': 79.9, 'buy_ratio': 48, 'sell_ratio': 52, 'sector': '종합반도체', 'ai_summary': '레거시 D램 감산', 'badge_bg': '#0F172A', 'badge_text': '코스피', 'is_warning': False, 'is_etf': False},
+    {'code': '402340', 'symbol': '402340.KS', 'name': 'SK스퀘어', 'market': 'KR', 'price': 84200.0, 'change_val': -2100.0, 'change_rate': -2.43, 'trading_value': 2640.0, 'trading_value_str': '2,640억원', 'trading_volume': 3135000, 'market_cap': '11.5조원', 'execution_strength': 87.4, 'buy_ratio': 45, 'sell_ratio': 55, 'sector': '반도체지주사', 'ai_summary': '대중 반도체 수출 규제 리스크', 'badge_bg': '#0F172A', 'badge_text': '코스피', 'is_warning': False, 'is_etf': False},
+    {'code': '034020', 'symbol': '034020.KS', 'name': '두산에너빌리티', 'market': 'KR', 'price': 21450.0, 'change_val': 850.0, 'change_rate': 4.13, 'trading_value': 3120.0, 'trading_value_str': '3,120억원', 'trading_volume': 14540000, 'market_cap': '13.7조원', 'execution_strength': 121.5, 'buy_ratio': 58, 'sell_ratio': 42, 'sector': '원자력발전/SMR', 'ai_summary': '체코 원전 수주 잭팟', 'badge_bg': '#0F172A', 'badge_text': '코스피', 'is_warning': False, 'is_etf': False},
+    {'code': '006400', 'symbol': '006400.KS', 'name': '삼성SDI', 'market': 'KR', 'price': 348000.0, 'change_val': 4500.0, 'change_rate': 1.31, 'trading_value': 2150.0, 'trading_value_str': '2,150억원', 'trading_volume': 617800, 'market_cap': '23.9조원', 'execution_strength': 106.8, 'buy_ratio': 53, 'sell_ratio': 47, 'sector': '배터리셀제조', 'ai_summary': '전고체 배터리 파일럿', 'badge_bg': '#0F172A', 'badge_text': '코스피', 'is_warning': False, 'is_etf': False},
+    {'code': '035420', 'symbol': '035420.KS', 'name': 'NAVER', 'market': 'KR', 'price': 176200.0, 'change_val': 2400.0, 'change_rate': 1.38, 'trading_value': 2080.0, 'trading_value_str': '2,080억원', 'trading_volume': 1180000, 'market_cap': '28.9조원', 'execution_strength': 107.2, 'buy_ratio': 53, 'sell_ratio': 47, 'sector': '인터넷/생성형AI', 'ai_summary': '생성형 AI 검색 수익화', 'badge_bg': '#0F172A', 'badge_text': '코스피', 'is_warning': False, 'is_etf': False},
+    {'code': '298040', 'symbol': '298040.KS', 'name': '효성중공업', 'market': 'KR', 'price': 428000.0, 'change_val': 12500.0, 'change_rate': 3.01, 'trading_value': 1950.0, 'trading_value_str': '1,950억원', 'trading_volume': 455600, 'market_cap': '3.9조원', 'execution_strength': 115.6, 'buy_ratio': 56, 'sell_ratio': 44, 'sector': '전력망/변압기', 'ai_summary': '초고압 변압기 공급 부족', 'badge_bg': '#0F172A', 'badge_text': '코스피', 'is_warning': False, 'is_etf': False},
     {'code': 'NVDA', 'symbol': 'NVDA', 'name': '엔비디아', 'market': 'US', 'price': 185.20, 'change_val': -8.50, 'change_rate': -4.39, 'trading_value': 35000.0, 'trading_value_str': '3.5조원', 'trading_volume': 48920100, 'market_cap': '$4.5T', 'execution_strength': 76.1, 'buy_ratio': 41, 'sell_ratio': 59, 'sector': 'AI가속기/GPU', 'ai_summary': '대중 반도체 수출 규제 리스크', 'badge_bg': '#0F172A', 'badge_text': 'NVD', 'is_warning': False, 'is_etf': False},
-    {'code': 'MSFT', 'symbol': 'MSFT', 'name': '마이크로소프트', 'market': 'US', 'price': 428.50, 'change_val': 7.20, 'change_rate': 1.71, 'trading_value': 18500.0, 'trading_value_str': '1.8조원', 'trading_volume': 16740200, 'market_cap': '$3.2T', 'execution_strength': 108.5, 'buy_ratio': 53, 'sell_ratio': 47, 'sector': '클라우드/OS', 'ai_summary': '엔터프라이즈 SaaS 구독 매출 성장', 'badge_bg': '#0F172A', 'badge_text': 'MSF', 'is_warning': False, 'is_etf': False}
+    {'code': 'MSFT', 'symbol': 'MSFT', 'name': '마이크로소프트', 'market': 'US', 'price': 428.50, 'change_val': 7.20, 'change_rate': 1.71, 'trading_value': 18500.0, 'trading_value_str': '1.8조원', 'trading_volume': 16740200, 'market_cap': '$3.2T', 'execution_strength': 108.5, 'buy_ratio': 53, 'sell_ratio': 47, 'sector': '클라우드/OS', 'ai_summary': '엔터프라이즈 SaaS 구독 매출 성장', 'badge_bg': '#0F172A', 'badge_text': 'MSF', 'is_warning': False, 'is_etf': False},
+    {'code': 'AMZN', 'symbol': 'AMZN', 'name': '아마존닷컴', 'market': 'US', 'price': 198.40, 'change_val': 5.80, 'change_rate': 3.01, 'trading_value': 16200.0, 'trading_value_str': '1.6조원', 'trading_volume': 22450000, 'market_cap': '$2.1T', 'execution_strength': 119.5, 'buy_ratio': 56, 'sell_ratio': 44, 'sector': '이커머스/클라우드', 'ai_summary': '생성형 AI 엔터프라이즈 수익화 가시화', 'badge_bg': '#0F172A', 'badge_text': 'AMZ', 'is_warning': False, 'is_etf': False},
+    {'code': 'AAPL', 'symbol': 'AAPL', 'name': '애플', 'market': 'US', 'price': 224.80, 'change_val': 3.60, 'change_rate': 1.63, 'trading_value': 14800.0, 'trading_value_str': '1.4조원', 'trading_volume': 25600000, 'market_cap': '$3.4T', 'execution_strength': 108.6, 'buy_ratio': 53, 'sell_ratio': 47, 'sector': '스마트기기/OS', 'ai_summary': '', 'badge_bg': '#0F172A', 'badge_text': 'AAP', 'is_warning': False, 'is_etf': False},
+    {'code': 'TSLA', 'symbol': 'TSLA', 'name': '테슬라', 'market': 'US', 'price': 218.40, 'change_val': -4.60, 'change_rate': -2.06, 'trading_value': 15600.0, 'trading_value_str': '1.5조원', 'trading_volume': 31200000, 'market_cap': '$695B', 'execution_strength': 89.4, 'buy_ratio': 46, 'sell_ratio': 54, 'sector': '전기차/자율주행', 'ai_summary': '', 'badge_bg': '#0F172A', 'badge_text': 'TSL', 'is_warning': False, 'is_etf': False}
 ]
 
 GLOBAL_UNIVERSE_MASTER = SEED_UNIVERSE_FALLBACK
@@ -846,7 +856,7 @@ def update_live_market_data():
             # 1. Update BTC
             try:
                 req = urllib.request.Request('https://api.upbit.com/v1/ticker?markets=KRW-BTC', headers={'User-Agent': 'Mozilla/5.0'})
-                res = urllib.request.urlopen(req, context=ssl_ctx, timeout=1.5)
+                res = urllib.request.urlopen(req, context=ssl_ctx, timeout=0.8)
                 btc_data = json.loads(res.read().decode('utf-8'))[0]
                 for idx in INDICES_DATA:
                     if idx['id'] == 'btc':
