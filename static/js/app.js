@@ -1,4 +1,3 @@
-
 // 1-Second Smooth Local Clock Ticker
 
 function updateClockTick() {
@@ -454,10 +453,9 @@ async function fetchStocks() {
 // Render Top Status Header
 
 function renderMarketStatus() {
-
     if (!state.marketStatus) return;
-
     const container = document.getElementById('marketStatusContainer');
+    if (!container) return;
 
     const { kr_market, us_market, server_time } = state.marketStatus;
 
@@ -566,9 +564,9 @@ function renderIndices() {
         }
 
                 const cardStyleClasses = isSessionActive ? 'session-active' : '';
-        const isClickable = (idx.id === 'kospi' || idx.id === 'kosdaq');
-        const clickAttr = isClickable ? `onclick="navigateToIndexDetail('${idx.id}')"` : '';
-        const cursorAttr = isClickable ? 'cursor-pointer hover:border-amber-400/80 hover:shadow-lg hover:shadow-amber-500/10 transition duration-200' : '';
+        const isClickable = true;
+        const clickAttr = `onclick="navigateToIndexDetail('${idx.id}')"`;
+        const cursorAttr = 'cursor-pointer hover:border-amber-400/80 hover:shadow-lg hover:shadow-amber-500/10 transition duration-200';
 
         return `
             <div class="index-card ${cardStyleClasses} ${cursorAttr} flex flex-col justify-between h-[215px]" ${clickAttr}>
@@ -664,8 +662,8 @@ function renderIndices() {
 // Render Stocks Ranking Table
 
 function renderStocks(updatedAt) {
-
-        const container = document.getElementById('stocksTableBody');
+    const container = document.getElementById('stocksTableBody');
+    if (!container) return;
 
     const metricHeader = document.getElementById('colTradingMetric');
 
@@ -925,7 +923,7 @@ function closeStockDetail() {
 
 // Filter and Event Listeners
 
-document.addEventListener('DOMContentLoaded', () => {
+function initApp() {
 
     // Stocks only (exclude ETF) checkbox
 
@@ -1012,24 +1010,36 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Initial load
-
     fetchMarketStatus();
-
     fetchIndices();
-
     fetchStocks();
 
+    // Golden-Standard Routing on Refresh / Hash Change
+    function handleRoute() {
+        const hash = window.location.hash || '';
+        if (hash.startsWith('#index/')) {
+            const sym = hash.replace('#index/', '').toLowerCase();
+            navigateToIndexDetail(sym);
+        } else {
+            navigateToHome();
+        }
+    }
+
+    handleRoute();
+    window.addEventListener('hashchange', handleRoute);
+
     // Optimal Golden-Standard Live Intervals (Zero Server Strain + High Responsiveness)
-
     setInterval(updateClockTick, 1000);    // Smooth 1-second local clock tick
-
     setInterval(fetchIndices, 3000);       // Global Indices every 3 seconds
-
     setInterval(fetchStocks, 5000);        // Stock Quotes & Execution Strength every 5 seconds
-
     setInterval(fetchMarketStatus, 15000); // Market Session Status sync every 15 seconds
+}
 
-});
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initApp);
+} else {
+    initApp();
+}
 
 // =========================================================================
 // ISOLATED MODULE: KOSPI/KOSDAQ Dedicated Candlestick Chart Engine (Toss)
@@ -1053,13 +1063,27 @@ function navigateToHome() {
         navDetail.classList.remove('flex');
     }
     
-    window.location.hash = '';
+    if (window.location.hash) {
+        history.replaceState(null, '', window.location.pathname);
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+const INDEX_CLIENT_META = {
+    'kospi': { name: '코스피', code: 'KOSPI', country: '한국', flag: 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f1f0-1f1f7.svg', title: '🇰🇷 코스피 지수 분석' },
+    'kosdaq': { name: '코스닥', code: 'KOSDAQ', country: '한국', flag: 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f1f0-1f1f7.svg', title: '🇰🇷 코스닥 지수 분석' },
+    'sp500': { name: 'S&P 500', code: 'S&P 500', country: '미국', flag: 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f1fa-1f1f8.svg', title: '🇺🇸 S&P 500 지수 분석' },
+    'nasdaq': { name: '나스닥 100', code: 'NASDAQ 100', country: '미국', flag: 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f1fa-1f1f8.svg', title: '🇺🇸 나스닥 100 지수 분석' },
+    'us10y': { name: '미국 국채 10년', code: 'US10Y', country: '미국', flag: 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f1fa-1f1f8.svg', title: '🇺🇸 미국 국채 10년 금리 분석' },
+    'usdkrw': { name: '원/달러 환율', code: 'USD/KRW', country: '환율', flag: 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f1fa-1f1f8.svg', title: '💵 원/달러 환율 분석' },
+    'gold': { name: '국제 금 선물', code: 'GOLD', country: '원자재', flag: 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f4b0.svg', title: '🪙 국제 금 선물 분석' },
+    'btc': { name: '비트코인', code: 'BTC', country: '가상자산', flag: 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/20bf.svg', title: '₿ 비트코인 시세 분석' }
+};
+
 function navigateToIndexDetail(indexId) {
     state.currentView = 'index_detail';
-    state.detailIndexCode = indexId.toLowerCase();
+    state.detailIndexCode = (indexId || 'kospi').toLowerCase();
+    const meta = INDEX_CLIENT_META[state.detailIndexCode] || INDEX_CLIENT_META['kospi'];
     
     const dView = document.getElementById('dashboardView');
     const iView = document.getElementById('indexDetailView');
@@ -1077,11 +1101,44 @@ function navigateToIndexDetail(indexId) {
         navDetail.classList.add('flex');
     }
     
-    const titleText = (state.detailIndexCode === 'kospi') ? '🇰🇷 코스피 지수 분석' : '🇰🇷 코스닥 지수 분석';
     const detailTitle = document.getElementById('navDetailTitle');
-    if (detailTitle) detailTitle.innerText = titleText;
+    if (detailTitle) detailTitle.innerText = meta.title;
     
-    window.location.hash = `index/${state.detailIndexCode}`;
+    // Instant 0ms Header Pre-fill (Eliminates all flickering!)
+    const idxName = document.getElementById('detailIndexName');
+    const idxPrice = document.getElementById('detailIndexPrice');
+    const flagImg = document.getElementById('detailFlagIcon');
+    const countryName = document.getElementById('detailCountryName');
+    if (idxName) idxName.innerText = meta.name;
+    if (flagImg) flagImg.src = meta.flag;
+    if (countryName) countryName.innerText = meta.country;
+    
+    // Pre-fill price from memory cache if available
+    const cachedIdx = (state.indices || []).find(i => i.id === state.detailIndexCode);
+    if (cachedIdx) {
+        updateIndexHeaderStats(cachedIdx, state.detailIndexCode);
+    } else {
+        if (idxPrice) idxPrice.innerText = '-';
+    }
+    
+    // Clear old chart to prevent ghosting
+    const mainContainer = document.getElementById('tvMainChartContainer');
+    const volContainer = document.getElementById('tvVolumeChartContainer');
+    if (state.tvChart) {
+        try { state.tvChart.remove(); } catch(e){}
+        state.tvChart = null;
+    }
+    if (state.tvVolChart) {
+        try { state.tvVolChart.remove(); } catch(e){}
+        state.tvVolChart = null;
+    }
+    if (mainContainer) mainContainer.innerHTML = '<div class="flex items-center justify-center h-full text-slate-500 font-mono text-sm">차트 로딩중...</div>';
+    if (volContainer) volContainer.innerHTML = '';
+    
+    const targetHash = `#index/${state.detailIndexCode}`;
+    if (window.location.hash !== targetHash) {
+        history.replaceState(null, '', targetHash);
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
     
     loadIndexDetailData();
@@ -1119,9 +1176,76 @@ function calculateVolMA(candles, period) {
     return result;
 }
 
+function updateIndexHeaderStats(quote, idxKey) {
+    if (!quote) return;
+    const idxName = document.getElementById('detailIndexName');
+    const idxPrice = document.getElementById('detailIndexPrice');
+    const flagImg = document.getElementById('detailFlagIcon');
+    const countryName = document.getElementById('detailCountryName');
+    
+    if (idxName) idxName.innerText = quote.name || '지수';
+    if (flagImg && quote.flag) flagImg.src = quote.flag;
+    
+    const countryLabels = {
+        'KR': '한국',
+        'US': '미국',
+        'FX': '환율',
+        'COMM': '원자재',
+        'CRYPTO': '가상자산'
+    };
+    if (countryName) countryName.innerText = countryLabels[quote.country] || quote.country || '글로벌';
+    
+    const isCrypto = (idxKey === 'btc');
+    const isRate = (idxKey === 'us10y');
+    
+    if (idxPrice && quote.price !== undefined) {
+        if (isCrypto) {
+            idxPrice.innerText = Math.round(quote.price).toLocaleString('ko-KR');
+        } else if (isRate) {
+            idxPrice.innerText = Number(quote.price).toFixed(3);
+        } else {
+            idxPrice.innerText = Number(quote.price).toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+    }
+    
+    const isUp = (quote.change_rate >= 0);
+    const chgColor = isUp ? 'text-[#FF5252]' : 'text-[#3B82F6]';
+    const chgSign = isUp ? '+' : '';
+    const chgValStr = isRate ? (chgSign + Number(quote.change_val || 0).toFixed(3) + '%p') : (isCrypto ? (chgSign + Math.round(quote.change_val || 0).toLocaleString('ko-KR')) : (chgSign + Number(quote.change_val || 0).toFixed(2)));
+    const chgRateStr = `(${chgSign}${Number(quote.change_rate || 0).toFixed(2)}%)`;
+    
+    const chgBadge = document.getElementById('detailIndexChangeBadge');
+    if (chgBadge) {
+        chgBadge.innerText = `${chgValStr} ${chgRateStr}`;
+        chgBadge.className = `font-bold num-clean ${chgColor}`;
+    }
+    
+    const elVol = document.getElementById('detailVolStr');
+    const elOpen = document.getElementById('detailOpenPrice');
+    const elLow = document.getElementById('detailLowPrice');
+    const elHigh = document.getElementById('detailHighPrice');
+    const el52L = document.getElementById('detail52WLow');
+    const el52H = document.getElementById('detail52WHigh');
+    
+    const fmt = (v) => {
+        if (v === undefined || v === null) return '-';
+        if (isCrypto) return Math.round(v).toLocaleString('ko-KR');
+        if (isRate) return Number(v).toFixed(3);
+        return Number(v).toLocaleString('ko-KR', { minimumFractionDigits: 2 });
+    };
+    
+    if (elVol && quote.vol_str) elVol.innerText = quote.vol_str;
+    if (elOpen) elOpen.innerText = fmt(quote.open);
+    if (elLow) elLow.innerText = fmt(quote.low);
+    if (elHigh) elHigh.innerText = fmt(quote.high);
+    if (el52L) el52L.innerText = fmt(quote.l52);
+    if (el52H) el52H.innerText = fmt(quote.h52);
+}
+
+let indexDetailRefreshTimer = null;
+
 async function loadIndexDetailData() {
-    const code = state.detailIndexCode.toUpperCase();
-    const isKospi = (code === 'KOSPI');
+    const code = (state.detailIndexCode || 'kospi').toLowerCase();
     
     try {
         const tf = state.detailTimeframe || 'day';
@@ -1129,32 +1253,68 @@ async function loadIndexDetailData() {
         const data = await res.json();
         const quote = data.quote || {};
         
-        const idxName = document.getElementById('detailIndexName');
-        const idxPrice = document.getElementById('detailIndexPrice');
-        if (idxName) idxName.innerText = isKospi ? '코스피' : '코스닥';
-        if (idxPrice) idxPrice.innerText = quote.price ? quote.price.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-';
-        
-        const isUp = (quote.change_rate >= 0);
-        const chgColor = isUp ? 'text-[#FF5252]' : 'text-[#3B82F6]';
-        const chgSign = isUp ? '+' : '';
-        const chgText = `${chgSign}${Number(quote.change_val || 0).toFixed(2)}(${chgSign}${Number(quote.change_rate || 0).toFixed(2)}%)`;
-        
-        const chgBadge = document.getElementById('detailIndexChangeBadge');
-        if (chgBadge) {
-            chgBadge.innerText = chgText;
-            chgBadge.className = `font-bold font-mono ${chgColor}`;
-        }
-        
-        if (quote.vol_str && document.getElementById('detailVolStr')) document.getElementById('detailVolStr').innerText = quote.vol_str;
-        if (quote.open && document.getElementById('detailOpenPrice')) document.getElementById('detailOpenPrice').innerText = quote.open.toLocaleString('ko-KR', { minimumFractionDigits: 2 });
-        if (quote.low && document.getElementById('detailLowPrice')) document.getElementById('detailLowPrice').innerText = quote.low.toLocaleString('ko-KR', { minimumFractionDigits: 2 });
-        if (quote.high && document.getElementById('detailHighPrice')) document.getElementById('detailHighPrice').innerText = quote.high.toLocaleString('ko-KR', { minimumFractionDigits: 2 });
-        if (quote.l52 && document.getElementById('detail52WLow')) document.getElementById('detail52WLow').innerText = quote.l52.toLocaleString('ko-KR', { minimumFractionDigits: 2 });
-        if (quote.h52 && document.getElementById('detail52WHigh')) document.getElementById('detail52WHigh').innerText = quote.h52.toLocaleString('ko-KR', { minimumFractionDigits: 2 });
-        
+        updateIndexHeaderStats(quote, code);
         renderTradingViewChart(data.candles || []);
+        
+        // Start continuous live polling (2s interval) with real-time chart updates without refresh!
+        if (indexDetailRefreshTimer) clearInterval(indexDetailRefreshTimer);
+        indexDetailRefreshTimer = setInterval(async () => {
+            if (state.currentView !== 'index_detail') {
+                clearInterval(indexDetailRefreshTimer);
+                indexDetailRefreshTimer = null;
+                return;
+            }
+            try {
+                const curTf = state.detailTimeframe || 'day';
+                const qRes = await fetch(`/api/index/history?code=${code}&timeframe=${curTf}`);
+                const qData = await qRes.json();
+                if (qData.quote) {
+                    updateIndexHeaderStats(qData.quote, code);
+                }
+                if (qData.candles && qData.candles.length) {
+                    updateLiveChartCandles(qData.candles);
+                }
+            } catch(err){}
+        }, 2000);
     } catch (e) {
         console.error('Failed to load index detail data:', e);
+    }
+}
+
+function updateLiveChartCandles(newCandles) {
+    if (!newCandles || !newCandles.length || !state.tvCandleSeries) return;
+    const lastC = newCandles[newCandles.length - 1];
+    if (!lastC) return;
+    
+    try {
+        state.tvCandleSeries.update(lastC);
+        const lastV = {
+            time: lastC.time,
+            value: (typeof lastC.volume === 'number' && !isNaN(lastC.volume)) ? Math.max(0, lastC.volume) : 0,
+            color: (lastC.close >= lastC.open) ? '#EF4444' : '#3B82F6'
+        };
+        if (state.tvVolumeSeries) {
+            state.tvVolumeSeries.update(lastV);
+        }
+        
+        // Dynamically update latest price line color (Red for Rising, Blue for Falling)
+        const prevCandleClose = (newCandles.length > 1) ? newCandles[newCandles.length - 2].close : lastC.open;
+        const isUp = (lastC.close >= prevCandleClose);
+        state.tvCandleSeries.applyOptions({
+            priceLineColor: isUp ? '#EF4444' : '#3B82F6'
+        });
+        
+        // Update live in-chart OHLC overlay if crosshair is not active
+        const vertGuide = document.getElementById('globalCrosshairVert');
+        if (!vertGuide || vertGuide.classList.contains('hidden')) {
+            if (typeof updateInChartOverlay === 'function') {
+                updateInChartOverlay(lastC, lastV, lastC.time);
+            }
+        }
+    } catch (e) {
+        try {
+            state.tvCandleSeries.setData(newCandles);
+        } catch(err){}
     }
 }
 
@@ -1184,7 +1344,21 @@ function renderTradingViewChart(candles) {
         return;
     }
 
-    const cWidth = mainContainer.clientWidth || mainContainer.parentElement.clientWidth || 900;
+    const wrapper = document.getElementById('tvChartWrapper');
+    const cWidth = wrapper ? wrapper.clientWidth : (mainContainer.clientWidth || 900);
+    
+    let mainH = 410;
+    let volH = 169;
+    if (isInSiteFullscreen && wrapper) {
+        const totalH = wrapper.clientHeight || (window.innerHeight - 100);
+        volH = 160;
+        mainH = Math.max(300, totalH - volH - 2);
+    }
+    
+    const mainPane = mainContainer.parentElement;
+    const volPane = volContainer.parentElement;
+    if (mainPane) mainPane.style.height = `${mainH}px`;
+    if (volPane) volPane.style.height = `${volH}px`;
     
     // Dynamic Red (Rising) / Blue (Falling) color for current price line
     const lastCandle = candles[candles.length - 1];
@@ -1192,10 +1366,10 @@ function renderTradingViewChart(candles) {
     const isLatestUp = (lastCandle.close >= prevCandleClose);
     const dynamicPriceColor = isLatestUp ? '#EF4444' : '#3B82F6';
 
-    // 1. Top Pane: Main Candlestick Chart (410px, Independent Price Scale, Never Below 0)
+    // 1. Top Pane: Main Candlestick Chart (Independent Price Scale, Never Below 0)
     const mainChart = LightweightCharts.createChart(mainContainer, {
         width: cWidth,
-        height: 410,
+        height: mainH,
         layout: {
             background: { color: '#0B0E14' },
             textColor: '#94A3B8',
@@ -1372,10 +1546,41 @@ function renderTradingViewChart(candles) {
                 bottom: 0.0,
             },
         },
+        localization: {
+            timeFormatter: (time) => {
+                const ts = (typeof time === 'number' ? time : (time.timestamp || (time.year ? new Date(Date.UTC(time.year, time.month-1, time.day)).getTime()/1000 : 0)));
+                const d = new Date(ts * 1000);
+                const tf = state.detailTimeframe || 'day';
+                if (['1m', '3m', '5m', '15m', '30m', '60m'].includes(tf)) {
+                    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+                } else if (tf === 'year') {
+                    return `${d.getUTCFullYear()}`;
+                } else if (tf === 'month') {
+                    return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}`;
+                } else {
+                    return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
+                }
+            },
+            dateFormat: 'yyyy-MM-dd',
+        },
         timeScale: {
             borderColor: '#21262D',
             timeVisible: ['1m', '3m', '5m', '15m', '30m', '60m'].includes(state.detailTimeframe),
             secondsVisible: false,
+            tickMarkFormatter: (time, tickMarkType, locale) => {
+                const ts = (typeof time === 'number' ? time : (time.timestamp || (time.year ? new Date(Date.UTC(time.year, time.month-1, time.day)).getTime()/1000 : 0)));
+                const d = new Date(ts * 1000);
+                const tf = state.detailTimeframe || 'day';
+                if (tf === 'year') {
+                    return `${d.getUTCFullYear()}`;
+                } else if (tf === 'month') {
+                    return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}`;
+                } else if (['1m', '3m', '5m', '15m', '30m', '60m'].includes(tf)) {
+                    return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+                } else {
+                    return `${String(d.getUTCMonth()+1).padStart(2,'0')}/${String(d.getUTCDate()).padStart(2,'0')}`;
+                }
+            }
         },
     });
     state.tvVolChart = volChart;
@@ -1396,7 +1601,7 @@ function renderTradingViewChart(candles) {
     });
     const volData = candles.map(c => ({
         time: c.time,
-        value: c.volume || 100000,
+        value: (typeof c.volume === 'number' && !isNaN(c.volume)) ? Math.max(0, c.volume) : 0,
         color: (c.close >= c.open) ? '#EF4444' : '#3B82F6'
     }));
     volumeSeries.setData(volData);
@@ -1445,11 +1650,12 @@ function renderTradingViewChart(candles) {
 
     // Function to format volume numbers e.g. 345.82M
     function formatVolM(val) {
-        if (!val) return '0';
+        if (val === undefined || val === null) return '-';
+        if (val === 0) return '0';
         if (val >= 1000000000) return `${(val / 1000000000).toFixed(2)}B`;
         if (val >= 1000000) return `${(val / 1000000).toFixed(2)}M`;
-        if (val >= 1000) return `${(val / 1000).toFixed(1)}K`;
-        return String(val);
+        if (val >= 10000) return `${(val / 1000).toFixed(1)}K`;
+        return Number(val).toLocaleString('ko-KR');
     }
 
     // Helper to update In-Chart Live Overlays
@@ -1488,22 +1694,22 @@ function renderTradingViewChart(candles) {
             if (tipOpenChg) {
                 const isUp = oDiff >= 0;
                 tipOpenChg.innerText = `(${isUp ? '+' : ''}${oDiff.toFixed(2)}%)`;
-                tipOpenChg.className = isUp ? 'font-sans text-[#EF4444] text-[10px] font-medium tracking-tight tabular-nums' : 'font-sans text-[#3B82F6] text-[10px] font-medium tracking-tight tabular-nums';
+                tipOpenChg.className = isUp ? 'font-sans text-[#EF4444] text-[10.5px] font-medium tracking-tight num-clean' : 'font-sans text-[#3B82F6] text-[10.5px] font-medium tracking-tight num-clean';
             }
             if (tipHighChg) {
                 const isUp = hDiff >= 0;
                 tipHighChg.innerText = `(${isUp ? '+' : ''}${hDiff.toFixed(2)}%)`;
-                tipHighChg.className = isUp ? 'font-sans text-[#EF4444] text-[10px] font-medium tracking-tight tabular-nums' : 'font-sans text-[#3B82F6] text-[10px] font-medium tracking-tight tabular-nums';
+                tipHighChg.className = isUp ? 'font-sans text-[#EF4444] text-[10.5px] font-medium tracking-tight num-clean' : 'font-sans text-[#3B82F6] text-[10.5px] font-medium tracking-tight num-clean';
             }
             if (tipLowChg) {
                 const isUp = lDiff >= 0;
                 tipLowChg.innerText = `(${isUp ? '+' : ''}${lDiff.toFixed(2)}%)`;
-                tipLowChg.className = isUp ? 'font-sans text-[#EF4444] text-[10px] font-medium tracking-tight tabular-nums' : 'font-sans text-[#3B82F6] text-[10px] font-medium tracking-tight tabular-nums';
+                tipLowChg.className = isUp ? 'font-sans text-[#EF4444] text-[10.5px] font-medium tracking-tight num-clean' : 'font-sans text-[#3B82F6] text-[10.5px] font-medium tracking-tight num-clean';
             }
             if (tipCloseChg) {
                 const isUp = cDiff >= 0;
                 tipCloseChg.innerText = `(${isUp ? '+' : ''}${cDiff.toFixed(2)}%)`;
-                tipCloseChg.className = isUp ? 'font-sans text-[#EF4444] text-[10px] font-medium tracking-tight tabular-nums' : 'font-sans text-[#3B82F6] text-[10px] font-medium tracking-tight tabular-nums';
+                tipCloseChg.className = isUp ? 'font-sans text-[#EF4444] text-[10.5px] font-medium tracking-tight num-clean' : 'font-sans text-[#3B82F6] text-[10.5px] font-medium tracking-tight num-clean';
             }
         }
         
@@ -1533,7 +1739,7 @@ function renderTradingViewChart(candles) {
     volChart.subscribeCrosshairMove(handleCrosshair);
     
     // Global Full-Height Continuous Vertical Guideline & Attached Dynamic Date Box
-    const wrapper = document.getElementById('tvChartWrapper');
+    // wrapper is already declared above
     const vertGuide = document.getElementById('globalCrosshairVert');
     const dateBadge = document.getElementById('globalCrosshairDateBadge');
     
@@ -1551,15 +1757,17 @@ function renderTradingViewChart(candles) {
                     try {
                         const time = state.tvChart.timeScale().coordinateToTime(x);
                         if (time) {
-                            const ts = (typeof time === 'number' ? time : (time.timestamp || (time.year ? new Date(time.year, time.month-1, time.day).getTime()/1000 : 0)));
+                            const ts = (typeof time === 'number' ? time : (time.timestamp || (time.year ? new Date(Date.UTC(time.year, time.month-1, time.day)).getTime()/1000 : 0)));
                             const d = new Date(ts * 1000);
-                            const isIntraday = ['1m', '3m', '5m', '15m', '30m', '60m'].includes(state.detailTimeframe);
-                            if (isIntraday) {
-                                const mStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-                                dateBadge.innerText = mStr;
+                            const tf = state.detailTimeframe || 'day';
+                            if (['1m', '3m', '5m', '15m', '30m', '60m'].includes(tf)) {
+                                dateBadge.innerText = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+                            } else if (tf === 'year') {
+                                dateBadge.innerText = `${d.getUTCFullYear()}`;
+                            } else if (tf === 'month') {
+                                dateBadge.innerText = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}`;
                             } else {
-                                const dStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-                                dateBadge.innerText = dStr;
+                                dateBadge.innerText = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
                             }
                         } else if (candles && candles.length) {
                             // In future whitespace beyond latest candle
@@ -1571,8 +1779,14 @@ function renderTradingViewChart(candles) {
                             const extraBars = Math.round(diffX / (barSpacing || 6));
                             const extraSeconds = extraBars * (state.detailTimeframe === 'week' ? 7*86400 : (state.detailTimeframe === 'month' ? 30*86400 : (state.detailTimeframe === 'year' ? 365*86400 : 86400)));
                             const estD = new Date((lastTime + extraSeconds) * 1000);
-                            const estStr = `${estD.getFullYear()}-${String(estD.getMonth()+1).padStart(2,'0')}-${String(estD.getDate()).padStart(2,'0')}`;
-                            dateBadge.innerText = estStr;
+                            const tf = state.detailTimeframe || 'day';
+                            if (tf === 'year') {
+                                dateBadge.innerText = `${estD.getUTCFullYear()}`;
+                            } else if (tf === 'month') {
+                                dateBadge.innerText = `${estD.getUTCFullYear()}-${String(estD.getUTCMonth()+1).padStart(2,'0')}`;
+                            } else {
+                                dateBadge.innerText = `${estD.getUTCFullYear()}-${String(estD.getUTCMonth()+1).padStart(2,'0')}-${String(estD.getUTCDate()).padStart(2,'0')}`;
+                            }
                         }
                     } catch(err){}
                 }
@@ -1662,10 +1876,27 @@ function changeTimeframe(tf) {
         b.classList.add('text-slate-400', 'border-transparent');
     });
     
-    const targetBtn = document.querySelector(`[data-tf="${tf}"]`);
-    if (targetBtn) {
-        targetBtn.classList.add('active', 'text-amber-400', 'bg-amber-500/15', 'border-amber-500/30');
-        targetBtn.classList.remove('text-slate-400', 'border-transparent');
+    const menu = document.getElementById('menuMinuteSelect');
+    if (menu) menu.classList.add('hidden');
+    
+    const minWrapper = document.getElementById('minuteToggleWrapper');
+    if (['1m', '3m', '5m', '15m', '30m', '60m'].includes(tf)) {
+        const mainBtn = document.getElementById('btnActiveMinute');
+        const lbl = document.getElementById('lblMinuteText');
+        const labelMap = { '1m': '1분', '3m': '3분', '5m': '5분', '15m': '15분', '30m': '30분', '60m': '60분' };
+        if (lbl) lbl.innerText = labelMap[tf] || tf;
+        if (mainBtn) mainBtn.setAttribute('data-tf', tf);
+        
+        if (minWrapper) {
+            minWrapper.classList.add('active', 'text-amber-400', 'bg-amber-500/15', 'border-amber-500/30');
+            minWrapper.classList.remove('text-slate-400', 'border-transparent');
+        }
+    } else {
+        const targetBtn = document.querySelector(`[data-tf="${tf}"]`);
+        if (targetBtn) {
+            targetBtn.classList.add('active', 'text-amber-400', 'bg-amber-500/15', 'border-amber-500/30');
+            targetBtn.classList.remove('text-slate-400', 'border-transparent');
+        }
     }
     
     state.detailTimeframe = tf;
@@ -1673,39 +1904,118 @@ function changeTimeframe(tf) {
 }
 
 function selectMinuteTf(tf) {
-    const lbl = document.getElementById('lblMinuteText');
-    const menu = document.getElementById('menuMinuteSelect');
-    if (lbl) lbl.innerText = tf.replace('m', '분');
-    if (menu) menu.classList.add('hidden');
-    
-    document.querySelectorAll('.timeframe-btn').forEach(b => {
-        b.classList.remove('active', 'text-amber-400', 'bg-amber-500/15', 'border-amber-500/30');
-        b.classList.add('text-slate-400', 'border-transparent');
-    });
-    const btnMin = document.getElementById('btnMinuteDropdown');
-    if (btnMin) {
-        btnMin.classList.add('active', 'text-amber-400', 'bg-amber-500/15', 'border-amber-500/30');
-        btnMin.classList.remove('text-slate-400', 'border-transparent');
-    }
-    
-    state.detailTimeframe = tf;
-    loadIndexDetailData();
+    changeTimeframe(tf);
 }
 
-function toggleChartFullscreen() {
+function toggleMinuteDropdown(event) {
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+    const menu = document.getElementById('menuMinuteSelect');
+    if (menu) menu.classList.toggle('hidden');
+}
+
+// Global click outside listener for minute dropdown
+document.addEventListener('click', (e) => {
+    const menu = document.getElementById('menuMinuteSelect');
+    const toggleBtn = document.getElementById('btnMinuteToggle');
+    const mainBtn = document.getElementById('btnActiveMinute');
+    if (menu && !menu.classList.contains('hidden')) {
+        if (!menu.contains(e.target) && !toggleBtn?.contains(e.target) && !mainBtn?.contains(e.target)) {
+            menu.classList.add('hidden');
+        }
+    }
+});
+
+window.changeTimeframe = changeTimeframe;
+window.selectMinuteTf = selectMinuteTf;
+window.toggleMinuteDropdown = toggleMinuteDropdown;
+
+
+let isInSiteFullscreen = false;
+
+function toggleInSiteFullscreen() {
+    isInSiteFullscreen = !isInSiteFullscreen;
+    const card = document.getElementById('tvChartCard');
+    const wrapper = document.getElementById('tvChartWrapper');
+    
+    const lbl = document.getElementById('lblFullscreenText');
+    const iconExp = document.getElementById('iconFullscreenExpand');
+    const iconCol = document.getElementById('iconFullscreenCollapse');
+    
+    if (isInSiteFullscreen) {
+        document.body.style.overflow = 'hidden';
+        if (card) {
+            card.classList.add('fixed', 'inset-0', 'z-[9999]', 'bg-[#0B0E14]', 'w-screen', 'h-screen', 'p-4', 'lg:p-6', 'rounded-none', 'flex', 'flex-col');
+            card.classList.remove('toss-card', 'p-5', 'space-y-3');
+        }
+        if (wrapper) {
+            wrapper.classList.remove('h-[580px]', 'rounded-xl');
+            wrapper.classList.add('flex-1', 'h-full', 'rounded-lg');
+        }
+        if (lbl) lbl.innerText = '원래대로';
+        if (iconExp) iconExp.classList.add('hidden');
+        if (iconCol) iconCol.classList.remove('hidden');
+    } else {
+        document.body.style.overflow = '';
+        if (card) {
+            card.classList.remove('fixed', 'inset-0', 'z-[9999]', 'bg-[#0B0E14]', 'w-screen', 'h-screen', 'p-4', 'lg:p-6', 'rounded-none', 'flex', 'flex-col');
+            card.classList.add('toss-card', 'p-5', 'space-y-3');
+        }
+        if (wrapper) {
+            wrapper.classList.remove('flex-1', 'h-full', 'rounded-lg');
+            wrapper.classList.add('h-[580px]', 'rounded-xl');
+        }
+        if (lbl) lbl.innerText = '차트 크게보기';
+        if (iconExp) iconExp.classList.remove('hidden');
+        if (iconCol) iconCol.classList.add('hidden');
+    }
+    
+    setTimeout(() => {
+        resizeChartsToContainer();
+    }, 50);
+}
+
+function resizeChartsToContainer() {
+    const mainContainer = document.getElementById('tvMainChartContainer');
+    const volContainer = document.getElementById('tvVolumeChartContainer');
     const wrapper = document.getElementById('tvChartWrapper');
     if (!wrapper) return;
-    if (!document.fullscreenElement) {
-        wrapper.requestFullscreen().catch(err => console.log(err));
+    
+    const w = wrapper.clientWidth || 900;
+    if (isInSiteFullscreen) {
+        const totalH = wrapper.clientHeight || 700;
+        const volH = 160;
+        const mainH = Math.max(300, totalH - volH - 2);
+        
+        const mainPane = mainContainer?.parentElement;
+        const volPane = volContainer?.parentElement;
+        if (mainPane) mainPane.style.height = `${mainH}px`;
+        if (volPane) volPane.style.height = `${volH}px`;
+        
+        if (state.tvChart) state.tvChart.applyOptions({ width: w, height: mainH });
+        if (state.tvVolChart) state.tvVolChart.applyOptions({ width: w, height: volH });
     } else {
-        document.exitFullscreen();
+        const mainPane = mainContainer?.parentElement;
+        const volPane = volContainer?.parentElement;
+        if (mainPane) mainPane.style.height = '410px';
+        if (volPane) volPane.style.height = '169px';
+        
+        if (state.tvChart) state.tvChart.applyOptions({ width: w, height: 410 });
+        if (state.tvVolChart) state.tvVolChart.applyOptions({ width: w, height: 169 });
     }
 }
 
-window.navigateToIndexDetail = navigateToIndexDetail;
-window.navigateToHome = navigateToHome;
-window.loadIndexDetailData = loadIndexDetailData;
-window.selectMinuteTf = selectMinuteTf;
-window.changeTimeframe = changeTimeframe;
-window.toggleMovingAverages = toggleMovingAverages;
-window.toggleChartFullscreen = toggleChartFullscreen;
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && isInSiteFullscreen) {
+        toggleInSiteFullscreen();
+    }
+});
+
+window.addEventListener('resize', () => {
+    resizeChartsToContainer();
+});
+
+window.toggleInSiteFullscreen = toggleInSiteFullscreen;
+window.toggleChartFullscreen = toggleInSiteFullscreen;

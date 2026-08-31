@@ -1,3 +1,22 @@
+_GLOBAL_DAILY_CANDLES_CACHE = {}
+
+
+
+import math
+
+def safe_float(v, default=0.0):
+    if v is None:
+        return default
+    try:
+        f = float(v)
+        if math.isnan(f) or math.isinf(f):
+            return default
+        return f
+    except (ValueError, TypeError):
+        return default
+
+# In-memory cache for fast minute / historical candles
+_MINUTE_CANDLE_CACHE = {}
 import xml.etree.ElementTree as ET
 from typing import Optional, List, Dict, Any
 
@@ -2240,22 +2259,20 @@ def get_indices():
 
 
 @app.get('/api/stocks/ranking')
-
 def get_stocks_ranking(
-
-    market: str = Query('all', pattern='^(all|kr|us)$'),
-
-    sort: str = Query('trading_value', pattern='^(trading_value|trading_volume|change_up|change_down)$'),
-
+    market: str = Query('all'),
+    sort: str = Query('trading_value'),
     q: Optional[str] = None,
-
     limit: int = Query(100, ge=1, le=500),
-
     stocks_only: bool = Query(True),
-
     hide_warning: bool = Query(False)
-
 ):
+    market = (market or 'all').lower()
+    if market not in ['all', 'kr', 'us']:
+        market = 'all'
+    sort = (sort or 'trading_value').lower()
+    if sort not in ['trading_value', 'trading_volume', 'change_up', 'change_down']:
+        sort = 'trading_value'
 
     top_stocks = get_genuine_rankings(
 
@@ -2302,51 +2319,380 @@ app.mount('/static', StaticFiles(directory='static'), name='static')
 
 
 
-def fetch_naver_fchart_candles(symbol: str, timeframe: str = 'day', count: int = 3000):
-    yf_sym = '^KS11' if symbol == 'KOSPI' else '^KQ11'
+INDEX_META_MAP = {
+    'kospi': {
+        'symbol': 'KOSPI',
+        'yf_sym': '^KS11',
+        'name': '코스피',
+        'code': 'KOSPI',
+        'country': 'KR',
+        'flag': 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f1f0-1f1f7.svg',
+        'title': '🇰🇷 코스피 지수 분석',
+        'unit': 'pt'
+    },
+    'kosdaq': {
+        'symbol': 'KOSDAQ',
+        'yf_sym': '^KQ11',
+        'name': '코스닥',
+        'code': 'KOSDAQ',
+        'country': 'KR',
+        'flag': 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f1f0-1f1f7.svg',
+        'title': '🇰🇷 코스닥 지수 분석',
+        'unit': 'pt'
+    },
+    'sp500': {
+        'symbol': '.INX',
+        'yf_sym': '^GSPC',
+        'name': 'S&P 500',
+        'code': 'S&P 500',
+        'country': 'US',
+        'flag': 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f1fa-1f1f8.svg',
+        'title': '🇺🇸 S&P 500 지수 분석',
+        'unit': 'pt'
+    },
+    'nasdaq': {
+        'symbol': '.NDX',
+        'yf_sym': '^NDX',
+        'name': '나스닥 100',
+        'code': 'NASDAQ 100',
+        'country': 'US',
+        'flag': 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f1fa-1f1f8.svg',
+        'title': '🇺🇸 나스닥 100 지수 분석',
+        'unit': 'pt'
+    },
+    'us10y': {
+        'symbol': '^TNX',
+        'yf_sym': '^TNX',
+        'name': '미국 국채 10년',
+        'code': 'US10Y',
+        'country': 'US',
+        'flag': 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f1fa-1f1f8.svg',
+        'title': '🇺🇸 미국 국채 10년 금리 분석',
+        'unit': '%'
+    },
+    'usdkrw': {
+        'symbol': 'FX_USDKRW',
+        'yf_sym': 'USDKRW=X',
+        'name': '원/달러 환율',
+        'code': 'USD/KRW',
+        'country': 'FX',
+        'flag': 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f1fa-1f1f8.svg',
+        'title': '💵 원/달러 환율 분석',
+        'unit': '원'
+    },
+    'gold': {
+        'symbol': 'CM_GC',
+        'yf_sym': 'GC=F',
+        'name': '국제 금 선물',
+        'code': 'GOLD',
+        'country': 'COMM',
+        'flag': 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f4b0.svg',
+        'title': '🪙 국제 금 선물 분석',
+        'unit': '$'
+    },
+    'btc': {
+        'symbol': 'BTC-KRW',
+        'yf_sym': 'BTC-KRW',
+        'name': '비트코인',
+        'code': 'BTC',
+        'country': 'CRYPTO',
+        'flag': 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/20bf.svg',
+        'title': '₿ 비트코인 시세 분석',
+        'unit': '원'
+    }
+}
+
+_FAST_INFO_CACHE = {}
+
+def get_cached_fast_info(yf_sym: str):
+    now_ts = time.time()
+    if yf_sym in _FAST_INFO_CACHE:
+        c_ts, c_data = _FAST_INFO_CACHE[yf_sym]
+        if now_ts - c_ts < 2.0:
+            return c_data
+    try:
+        t = yf.Ticker(yf_sym)
+        fi = t.fast_info
+        p = safe_float(fi.last_price)
+        pc = safe_float(fi.previous_close, p)
+        cv = p - pc if p and pc else 0
+        cr = (cv / pc * 100) if pc else 0
+        data = {
+            'price': p,
+            'prev_close': pc,
+            'change_val': cv,
+            'change_rate': cr,
+            'open': safe_float(fi.open, p),
+            'day_high': safe_float(fi.day_high, p),
+            'day_low': safe_float(fi.day_low, p),
+            'year_high': safe_float(fi.year_high, p * 1.15),
+            'year_low': safe_float(fi.year_low, p * 0.85),
+        }
+        _FAST_INFO_CACHE[yf_sym] = (now_ts, data)
+        return data
+    except Exception:
+        return None
+
+
+def get_yahoo_chart_direct(sym: str, range_val: str = '5y', interval: str = '1d'):
+    encoded_sym = urllib.parse.quote(sym)
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{encoded_sym}?range={range_val}&interval={interval}"
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json'
+    }
+    req = urllib.request.Request(url, headers=headers)
+    res = urllib.request.urlopen(req, context=ssl_ctx, timeout=3.5).read().decode('utf-8')
+    d = json.loads(res)
+    result = d['chart']['result'][0]
+    ts_list = result.get('timestamp', [])
+    quote = result['indicators']['quote'][0]
+    opens = quote.get('open', [])
+    highs = quote.get('high', [])
+    lows = quote.get('low', [])
+    closes = quote.get('close', [])
+    vols = quote.get('volume', [])
     
+    candles = []
+    for i in range(len(ts_list)):
+        ts = ts_list[i]
+        o = opens[i] if i < len(opens) else None
+        h = highs[i] if i < len(highs) else None
+        l = lows[i] if i < len(lows) else None
+        c = closes[i] if i < len(closes) else None
+        v = vols[i] if i < len(vols) and vols[i] is not None else 0
+        if o is None or c is None:
+            if o is not None: c = o
+            elif c is not None: o = c
+            else: continue
+        h = h if h is not None else max(o, c)
+        l = l if l is not None else min(o, c)
+        if o > 0 and c > 0:
+            candles.append({
+                'time': ts,
+                'open': round(float(o), 2),
+                'high': round(float(h), 2),
+                'low': round(float(l), 2),
+                'close': round(float(c), 2),
+                'volume': int(v) if v else 0
+            })
+    return candles
+
+def fetch_naver_fchart_candles(symbol: str, timeframe: str = 'day', count: int = 3000):
+    idx_key = symbol.lower()
+    meta = INDEX_META_MAP.get(idx_key) or INDEX_META_MAP.get('kospi')
+    yf_sym = meta['yf_sym']
+    naver_sym = meta['symbol']
+    now_ts = time.time()
+    
+    def align_candle_date(dt, tf):
+        if tf == 'year':
+            return datetime.datetime(dt.year, 1, 1, tzinfo=datetime.timezone.utc)
+        elif tf == 'month':
+            return datetime.datetime(dt.year, dt.month, 1, tzinfo=datetime.timezone.utc)
+        elif tf == 'week':
+            days_to_friday = (4 - dt.weekday()) % 7
+            fri = dt + datetime.timedelta(days=days_to_friday)
+            return datetime.datetime(fri.year, fri.month, fri.day, tzinfo=datetime.timezone.utc)
+        else:
+            return datetime.datetime(dt.year, dt.month, dt.day, tzinfo=datetime.timezone.utc)
+
+    # 1. Minute timeframes (1m, 3m, 5m, 15m, 30m, 60m)
     if timeframe in ['1m', '3m', '5m', '15m', '30m', '60m']:
-        interval_map = {'1m':'1m', '3m':'2m', '5m':'5m', '15m':'15m', '30m':'30m', '60m':'60m'}
-        period_map = {'1m':'7d', '3m':'14d', '5m':'60d', '15m':'60d', '30m':'60d', '60m':'60d'}
-        iv = interval_map.get(timeframe, '5m')
-        pd = period_map.get(timeframe, '60d')
-        
+        cache_key = f"{idx_key}_{timeframe}"
+        if cache_key in _MINUTE_CANDLE_CACHE:
+            cached_time, cached_data = _MINUTE_CANDLE_CACHE[cache_key]
+            if now_ts - cached_time < 2.0 and cached_data:
+                return cached_data
+                
+        # Domestic KOSPI & KOSDAQ: Rich Multi-Day History (5d~30d) + 100% Real-Time Gapless Today Stream!
+        if idx_key in ['kospi', 'kosdaq']:
+            sym = 'KOSPI' if idx_key == 'kospi' else 'KOSDAQ'
+            tf_map = {
+                '1m': ('1m', '5d', 1),
+                '3m': ('2m', '5d', 3),
+                '5m': ('5m', '30d', 5),
+                '15m': ('15m', '30d', 15),
+                '30m': ('30m', '30d', 30),
+                '60m': ('60m', '30d', 60)
+            }
+            iv, pd_val, interval_mins = tf_map.get(timeframe, ('1m', '5d', 1))
+            bucket_sec = interval_mins * 60
+            
+            today_start_kst = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).replace(hour=9, minute=0, second=0, microsecond=0)
+            today_start_ts = int(today_start_kst.timestamp())
+            
+            past_candles = []
+            try:
+                df = yf.Ticker(yf_sym).history(period=pd_val, interval=iv)
+                for dt, row in df.iterrows():
+                    ts = int(dt.timestamp())
+                    if ts >= today_start_ts:
+                        continue
+                    o, h, l, c, v = row.get('Open'), row.get('High'), row.get('Low'), row.get('Close'), row.get('Volume')
+                    if o and c and o > 0 and c > 0:
+                        past_candles.append({
+                            'time': ts,
+                            'open': round(float(o), 2),
+                            'high': round(float(h), 2),
+                            'low': round(float(l), 2),
+                            'close': round(float(c), 2),
+                            'volume': int(v) if v else 0
+                        })
+            except Exception:
+                pass
+                
+            today_candles = []
+            try:
+                url_intra = f"https://api.stock.naver.com/chart/domestic/index/{sym}?periodType=day"
+                req_intra = urllib.request.Request(url_intra, headers={'User-Agent': 'Mozilla/5.0'})
+                res_intra = urllib.request.urlopen(req_intra, context=ssl_ctx, timeout=3.0).read().decode('utf-8')
+                raw_list = json.loads(res_intra).get('priceInfos', [])
+                
+                buckets = {}
+                prev_acc_vol = 0
+                for item in raw_list:
+                    dt_str = item.get('localDateTime', '')
+                    dt = datetime.datetime.strptime(dt_str, '%Y%m%d%H%M%S')
+                    ts = int(dt.replace(tzinfo=datetime.timezone(datetime.timedelta(hours=9))).timestamp())
+                    b_ts = (ts // bucket_sec) * bucket_sec
+                    c = float(item.get('currentPrice', 0))
+                    o = float(item.get('openPrice', c))
+                    h = float(item.get('highPrice', max(o, c)))
+                    l = float(item.get('lowPrice', min(o, c)))
+                    acc_vol = int(item.get('accumulatedTradingVolume', 0))
+                    bar_vol = max(0, acc_vol - prev_acc_vol)
+                    prev_acc_vol = acc_vol
+                    
+                    if b_ts not in buckets:
+                        buckets[b_ts] = {
+                            'time': b_ts,
+                            'open': round(o, 2),
+                            'high': round(h, 2),
+                            'low': round(l, 2),
+                            'close': round(c, 2),
+                            'volume': bar_vol
+                        }
+                    else:
+                        b = buckets[b_ts]
+                        b['high'] = max(b['high'], round(h, 2))
+                        b['low'] = min(b['low'], round(l, 2))
+                        b['close'] = round(c, 2)
+                        b['volume'] += bar_vol
+                today_candles = [buckets[k] for k in sorted(buckets.keys())]
+            except Exception:
+                pass
+                
+            candles = past_candles + today_candles
+            candles.sort(key=lambda x: x['time'])
+            if candles:
+                _MINUTE_CANDLE_CACHE[cache_key] = (now_ts, candles)
+                return candles
+
+        # Fast Upbit minute candles for BTC
+        if idx_key == 'btc':
+            try:
+                min_unit = 1 if timeframe == '1m' else (3 if timeframe == '3m' else (5 if timeframe == '5m' else (15 if timeframe == '15m' else (30 if timeframe == '30m' else 60))))
+                url_upbit = f"https://api.upbit.com/v1/candles/minutes/{min_unit}?market=KRW-BTC&count=200"
+                req_upbit = urllib.request.Request(url_upbit, headers={'User-Agent': 'Mozilla/5.0'})
+                res_upbit = urllib.request.urlopen(req_upbit, context=ssl_ctx, timeout=2.0).read().decode('utf-8')
+                candles_raw = json.loads(res_upbit)
+                candles = []
+                for c in reversed(candles_raw):
+                    ts = int(datetime.datetime.strptime(c['candle_date_time_kst'], '%Y-%m-%dT%H:%M:%S').replace(tzinfo=datetime.timezone(datetime.timedelta(hours=9))).timestamp())
+                    candles.append({
+                        'time': ts,
+                        'open': float(c['opening_price']),
+                        'high': float(c['high_price']),
+                        'low': float(c['low_price']),
+                        'close': float(c['trade_price']),
+                        'volume': int(float(c['candle_acc_trade_volume']))
+                    })
+                if candles:
+                    _MINUTE_CANDLE_CACHE[cache_key] = (now_ts, candles)
+                    return candles
+            except Exception:
+                pass
+
+        # Global assets (Gold, SP500, NASDAQ, etc.) via YFinance
+        tf_map = {
+            '1m': ('1m', '5d'),
+            '3m': ('2m', '5d'),
+            '5m': ('5m', '30d'),
+            '15m': ('15m', '30d'),
+            '30m': ('30m', '30d'),
+            '60m': ('60m', '30d')
+        }
+        iv, pd_val = tf_map.get(timeframe, ('5m', '30d'))
         try:
-            df = yf.Ticker(yf_sym).history(period=pd, interval=iv)
+            df = yf.Ticker(yf_sym).history(period=pd_val, interval=iv)
             candles = []
             for dt, row in df.iterrows():
+                o = safe_float(row.get('Open'))
+                h = safe_float(row.get('High'))
+                l = safe_float(row.get('Low'))
+                c = safe_float(row.get('Close'))
+                v = safe_float(row.get('Volume'))
+                if o <= 0 and c <= 0:
+                    continue
                 candles.append({
                     'time': int(dt.timestamp()),
-                    'open': round(float(row['Open']), 2),
-                    'high': round(float(row['High']), 2),
-                    'low': round(float(row['Low']), 2),
-                    'close': round(float(row['Close']), 2),
-                    'volume': int(row.get('Volume', 0))
+                    'open': round(o, 2),
+                    'high': round(h, 2),
+                    'low': round(l, 2),
+                    'close': round(c, 2),
+                    'volume': int(v)
                 })
+                
             if candles:
+                min_secs = 60 if timeframe == '1m' else (180 if timeframe == '3m' else (300 if timeframe == '5m' else (900 if timeframe == '15m' else (1800 if timeframe == '30m' else 3600))))
+                cur_bucket_ts = (int(time.time()) // min_secs) * min_secs
+                fi = get_cached_fast_info(yf_sym)
+                if fi and fi.get('price'):
+                    live_p = fi['price']
+                    last_c = candles[-1]
+                    if last_c['time'] < cur_bucket_ts:
+                        candles.append({
+                            'time': cur_bucket_ts,
+                            'open': last_c['close'],
+                            'high': max(last_c['close'], round(live_p, 2)),
+                            'low': min(last_c['close'], round(live_p, 2)),
+                            'close': round(live_p, 2),
+                            'volume': 100
+                        })
+                    elif last_c['time'] == cur_bucket_ts:
+                        last_c['high'] = max(last_c['high'], round(live_p, 2))
+                        last_c['low'] = min(last_c['low'], round(live_p, 2))
+                        last_c['close'] = round(live_p, 2)
+                        
+                _MINUTE_CANDLE_CACHE[cache_key] = (now_ts, candles)
                 return candles
         except Exception:
             pass
             
+    # 2. Year Candlestick aggregated from monthly
     elif timeframe == 'year':
         try:
             df = yf.Ticker(yf_sym).history(period='max', interval='1mo')
             years_dict = {}
             for dt, row in df.iterrows():
                 yr = str(dt.year)
-                o, h, l, c, vol = float(row['Open']), float(row['High']), float(row['Low']), float(row['Close']), int(row.get('Volume', 0))
+                o, h, l, c = safe_float(row.get('Open')), safe_float(row.get('High')), safe_float(row.get('Low')), safe_float(row.get('Close'))
+                v = safe_float(row.get('Volume'))
+                if o <= 0 and c <= 0:
+                    continue
                 if yr not in years_dict:
-                    years_dict[yr] = {'year': yr, 'open': o, 'high': h, 'low': l, 'close': c, 'volume': vol}
+                    years_dict[yr] = {'year': yr, 'open': o, 'high': h, 'low': l, 'close': c, 'volume': int(v)}
                 else:
                     years_dict[yr]['high'] = max(years_dict[yr]['high'], h)
                     years_dict[yr]['low'] = min(years_dict[yr]['low'], l)
                     years_dict[yr]['close'] = c
-                    years_dict[yr]['volume'] += vol
+                    years_dict[yr]['volume'] += int(v)
                     
             candles = []
             for yr, row in sorted(years_dict.items()):
-                dt = datetime.datetime(int(yr), 1, 1)
-                ts = int(dt.replace(tzinfo=datetime.timezone(datetime.timedelta(hours=9))).timestamp())
+                dt_utc = datetime.datetime(int(yr), 1, 1, tzinfo=datetime.timezone.utc)
+                ts = int(dt_utc.timestamp())
                 candles.append({
                     'time': ts,
                     'open': round(row['open'], 2),
@@ -2355,151 +2701,315 @@ def fetch_naver_fchart_candles(symbol: str, timeframe: str = 'day', count: int =
                     'close': round(row['close'], 2),
                     'volume': row['volume']
                 })
+            
             if candles:
-                return candles
+                stats = fetch_index_full_stats(idx_key)
+                if stats and stats.get('price'):
+                    lp = stats['price']
+                    candles[-1]['high'] = max(candles[-1]['high'], lp)
+                    candles[-1]['low'] = min(candles[-1]['low'], lp)
+                    candles[-1]['close'] = lp
+            return candles
         except Exception:
             pass
+
+    # 3. For Day, Week, Month for Domestic KOSPI & KOSDAQ via Naver Fchart
+    if idx_key in ['kospi', 'kosdaq']:
+        try:
+            url = f"https://fchart.stock.naver.com/sise.nhn?symbol={naver_sym}&timeframe={timeframe}&count=3000&requestType=0"
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+            xml_str = urllib.request.urlopen(req, context=ssl_ctx, timeout=3.5).read().decode('cp949', errors='ignore')
+            root = ET.fromstring(xml_str)
+            candles = []
+            for item in root.findall('.//item'):
+                data = item.attrib.get('data', '').split('|')
+                if len(data) >= 5:
+                    dt_str, o, h, l, c = data[0], float(data[1]), float(data[2]), float(data[3]), float(data[4])
+                    vol = int(data[5]) * 1000 if len(data) > 5 else 0
+                    dt = datetime.datetime.strptime(dt_str, '%Y%m%d')
+                    dt_utc = align_candle_date(dt, timeframe)
+                    ts = int(dt_utc.timestamp())
+                    candles.append({
+                        'time': ts,
+                        'open': o,
+                        'high': h,
+                        'low': l,
+                        'close': c,
+                        'volume': vol
+                    })
             
-    # For Day, Week, Month: Fetch max from Naver Fchart (3000 count), fallback to Yahoo Max
-    try:
-        url = f"https://fchart.stock.naver.com/sise.nhn?symbol={symbol}&timeframe={timeframe}&count=3000&requestType=0"
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
-        xml_str = urllib.request.urlopen(req, context=ssl_ctx, timeout=3.5).read().decode('cp949', errors='ignore')
-        root = ET.fromstring(xml_str)
-        candles = []
-        for item in root.findall('.//item'):
-            data = item.attrib.get('data', '').split('|')
-            if len(data) >= 5:
-                dt_str, o, h, l, c = data[0], float(data[1]), float(data[2]), float(data[3]), float(data[4])
-                vol = int(data[5]) * 1000 if len(data) > 5 else 0
-                dt = datetime.datetime.strptime(dt_str, '%Y%m%d')
-                ts = int(dt.replace(tzinfo=datetime.timezone(datetime.timedelta(hours=9))).timestamp())
-                candles.append({
-                    'time': ts,
-                    'open': o,
-                    'high': h,
-                    'low': l,
-                    'close': c,
-                    'volume': vol
-                })
-        if candles:
+            if candles:
+                stats = fetch_index_full_stats(idx_key)
+                if stats and stats.get('price'):
+                    lp = stats['price']
+                    candles[-1]['high'] = max(candles[-1]['high'], stats.get('high', lp))
+                    candles[-1]['low'] = min(candles[-1]['low'], stats.get('low', lp))
+                    candles[-1]['close'] = lp
+                    if stats.get('volume', 0) > 0:
+                        candles[-1]['volume'] = stats['volume']
             return candles
-    except Exception:
-        pass
-        
-    # Fallback to Yahoo max
+        except Exception:
+            pass
+
+    # 4. For Global Assets / Indices: Fast 10-Year Depth + RAM Caching (Sub-millisecond!)
+    cache_key_global = f"{idx_key}_{timeframe}"
+    if cache_key_global in _GLOBAL_DAILY_CANDLES_CACHE:
+        c_time, c_candles = _GLOBAL_DAILY_CANDLES_CACHE[cache_key_global]
+        if now_ts - c_time < 60.0 and c_candles:
+            # Fast live tail update in RAM
+            stats = fetch_index_full_stats(idx_key)
+            if stats and stats.get('price') and c_candles:
+                lp = stats['price']
+                c_copy = [dict(x) for x in c_candles]
+                c_copy[-1]['high'] = max(c_copy[-1].get('high', lp), stats.get('high', lp))
+                c_copy[-1]['low'] = min(c_copy[-1].get('low', lp), stats.get('low', lp))
+                c_copy[-1]['close'] = lp
+                return c_copy
+            return c_candles
+
+    candles = []
     try:
         yf_iv = '1d' if timeframe == 'day' else ('1wk' if timeframe == 'week' else '1mo')
-        df = yf.Ticker(yf_sym).history(period='max', interval=yf_iv)
-        candles = []
-        for dt, row in df.iterrows():
-            candles.append({
-                'time': int(dt.timestamp()),
-                'open': round(float(row['Open']), 2),
-                'high': round(float(row['High']), 2),
-                'low': round(float(row['Low']), 2),
-                'close': round(float(row['Close']), 2),
-                'volume': int(row.get('Volume', 0))
-            })
-        return candles
+        yf_rg = '5y' if timeframe == 'day' else ('10y' if timeframe == 'week' else 'max')
+        candles = get_yahoo_chart_direct(yf_sym, range_val=yf_rg, interval=yf_iv)
+        for c in candles:
+            dt = datetime.datetime.fromtimestamp(c['time'], tz=datetime.timezone.utc)
+            dt_utc = align_candle_date(dt, timeframe)
+            c['time'] = int(dt_utc.timestamp())
     except Exception:
-        return []
+        try:
+            df = yf.Ticker(yf_sym).history(period='5y', interval=yf_iv)
+            for dt, row in df.iterrows():
+                o = safe_float(row.get('Open'))
+                h = safe_float(row.get('High'))
+                l = safe_float(row.get('Low'))
+                c = safe_float(row.get('Close'))
+                v = safe_float(row.get('Volume'))
+                if o <= 0 and c <= 0:
+                    continue
+                if c <= 0 and o > 0: c = o
+                if o <= 0 and c > 0: o = c
+                dt_utc = align_candle_date(dt, timeframe)
+                candles.append({
+                    'time': int(dt_utc.timestamp()),
+                    'open': round(o, 2),
+                    'high': round(h, 2),
+                    'low': round(l, 2),
+                    'close': round(c, 2),
+                    'volume': int(v) if v else 0
+                })
+        except Exception:
+            pass
+        
+    if candles:
+        stats = fetch_index_full_stats(idx_key)
+        if stats and stats.get('price'):
+            lp = stats['price']
+            candles[-1]['high'] = max(candles[-1]['high'], stats.get('high', lp))
+            candles[-1]['low'] = min(candles[-1]['low'], stats.get('low', lp))
+            candles[-1]['close'] = lp
+        _GLOBAL_DAILY_CANDLES_CACHE[cache_key_global] = (now_ts, candles)
+            
+    candles.sort(key=lambda x: x['time'])
+    return candles
 
 def fetch_index_full_stats(symbol_code: str):
-    try:
-        url = f"https://finance.naver.com/sise/sise_index.naver?code={symbol_code}"
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
-        html = urllib.request.urlopen(req, context=ssl_ctx, timeout=2.5).read().decode('cp949', errors='ignore')
-        
-        # Price
-        p_m = re.search(r'id="now_value"[^>]*>([^<]+)</em>', html)
-        price_val = float(p_m.group(1).replace(',', '')) if p_m else 0.0
-
-        # Change & Rate
-        chg_m = re.search(r'id="change_value_and_rate"[^>]*><span>([^<]+)</span>\s*([+\-]?[0-9.]+%)', html)
-        if chg_m:
-            chg_val_raw = float(chg_m.group(1).replace(',', ''))
-            rate_str = chg_m.group(2)
-            chg_rate = float(rate_str.replace('%', ''))
-            chg_val = -chg_val_raw if chg_rate < 0 else chg_val_raw
-        else:
-            chg_val, chg_rate = 0.0, 0.0
-
-        # Volume
-        vol_m = re.search(r'id="quant"[^>]*>([^<]+)</td>', html)
-        vol_str = "2억 9,261만"
-        if vol_m:
-            vol_k = int(vol_m.group(1).replace(',', ''))
-            shares = vol_k * 1000
-            if shares >= 100000000:
-                eok = shares // 100000000
-                man = (shares % 100000000) // 10000
+    idx_key = symbol_code.lower()
+    meta = INDEX_META_MAP.get(idx_key) or INDEX_META_MAP.get('kospi')
+    
+    # 1. Domestic KOSPI & KOSDAQ
+    if idx_key in ['kospi', 'kosdaq']:
+        sym = 'KOSPI' if idx_key == 'kospi' else 'KOSDAQ'
+        try:
+            url_poll = f"https://polling.finance.naver.com/api/realtime/domestic/index/{sym}"
+            req_poll = urllib.request.Request(url_poll, headers={'User-Agent': 'Mozilla/5.0'})
+            res_poll = urllib.request.urlopen(req_poll, context=ssl_ctx, timeout=2.5).read().decode('utf-8')
+            d = json.loads(res_poll)
+            item = d.get('datas', [{}])[0]
+            
+            price_val = float(str(item.get('closePriceRaw', 0)).replace(',', ''))
+            chg_val = float(str(item.get('compareToPreviousClosePriceRaw', 0)).replace(',', ''))
+            chg_rate = float(str(item.get('fluctuationsRatioRaw', 0)).replace(',', ''))
+            open_val = float(str(item.get('openPriceRaw', 0)).replace(',', ''))
+            high_val = float(str(item.get('highPriceRaw', 0)).replace(',', ''))
+            low_val = float(str(item.get('lowPriceRaw', 0)).replace(',', ''))
+            vol_raw = int(str(item.get('accumulatedTradingVolumeRaw', 0)).replace(',', ''))
+            
+            if vol_raw >= 100000000:
+                eok = vol_raw // 100000000
+                man = (vol_raw % 100000000) // 10000
                 vol_str = f"{eok}억 {man:,}만"
-            elif shares >= 10000:
-                vol_str = f"{(shares // 10000):,}만"
+            elif vol_raw >= 10000:
+                vol_str = f"{(vol_raw // 10000):,}만"
+            else:
+                vol_str = f"{vol_raw:,}주"
+                
+            h52_val = high_val
+            l52_val = low_val
+            try:
+                url_sise = f"https://finance.naver.com/sise/sise_index.naver?code={sym}"
+                req_sise = urllib.request.Request(url_sise, headers={'User-Agent': 'Mozilla/5.0'})
+                html = urllib.request.urlopen(req_sise, context=ssl_ctx, timeout=2.0).read().decode('cp949', errors='ignore')
+                m_tds = re.findall(r'<td[^>]*class="td[2]?"[^>]*>([\d,.]+)</td>', html)
+                if len(m_tds) >= 6:
+                    h52_val = float(m_tds[4].replace(',', ''))
+                    l52_val = float(m_tds[5].replace(',', ''))
+            except Exception:
+                pass
+                
+            return {
+                'id': idx_key,
+                'name': meta['name'],
+                'code': meta['code'],
+                'flag': meta['flag'],
+                'country': meta['country'],
+                'unit': meta['unit'],
+                'price': price_val,
+                'change_val': chg_val,
+                'change_rate': chg_rate,
+                'volume': vol_raw,
+                'vol_str': vol_str,
+                'open': open_val,
+                'high': high_val,
+                'low': low_val,
+                'h52': h52_val,
+                'l52': l52_val
+            }
+        except Exception:
+            pass
 
-        # High & Low
-        high_m = re.search(r'id="high_value"[^>]*>([^<]+)</td>', html)
-        high_val = float(high_m.group(1).replace(',', '')) if high_m else price_val
+    # 2. Overseas Indices (S&P 500 & NASDAQ 100) via Naver Stock Basic API
+    if idx_key in ['sp500', 'nasdaq']:
+        try:
+            n_sym = '.INX' if idx_key == 'sp500' else '.NDX'
+            url = f"https://api.stock.naver.com/index/{n_sym}/basic"
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            res = urllib.request.urlopen(req, context=ssl_ctx, timeout=3.0).read().decode('utf-8')
+            d = json.loads(res)
+            
+            price_val = float(d.get('closePriceRaw', 0))
+            chg_val = float(d.get('compareToPreviousClosePriceRaw', 0))
+            chg_rate = float(d.get('fluctuationsRatioRaw', 0))
+            open_val = float(d.get('openPriceRaw', price_val))
+            high_val = float(d.get('highPriceRaw', max(price_val, open_val)))
+            low_val = float(d.get('lowPriceRaw', min(price_val, open_val)))
+            
+            vol_raw = int(d.get('accumulatedTradingVolumeRaw', 0))
+            if vol_raw <= 0:
+                # If Naver raw volume is 0, use cached volume if present
+                cached_c = _GLOBAL_DAILY_CANDLES_CACHE.get(f"{idx_key}_day")
+                if cached_c and cached_c[1] and cached_c[1][-1].get('volume', 0) > 0:
+                    vol_raw = int(cached_c[1][-1]['volume'])
+            
+            h52_val = high_val
+            l52_val = low_val
+            for item in d.get('stockItemTotalInfos', []):
+                if item.get('code') == 'highPriceOf52Weeks':
+                    h52_val = float(str(item.get('value', high_val)).replace(',', ''))
+                elif item.get('code') == 'lowPriceOf52Weeks':
+                    l52_val = float(str(item.get('value', low_val)).replace(',', ''))
+                    
+            if vol_raw >= 100000000:
+                eok = vol_raw // 100000000
+                man = (vol_raw % 100000000) // 10000
+                vol_str = f"{eok}억 {man:,}만"
+            elif vol_raw >= 10000:
+                vol_str = f"{(vol_raw // 10000):,}만"
+            else:
+                vol_str = f"{vol_raw:,}"
+                
+            return {
+                'id': idx_key,
+                'name': meta['name'],
+                'code': meta['code'],
+                'flag': meta['flag'],
+                'country': meta['country'],
+                'unit': meta['unit'],
+                'price': price_val,
+                'change_val': chg_val,
+                'change_rate': chg_rate,
+                'volume': vol_raw,
+                'vol_str': vol_str,
+                'open': open_val,
+                'high': high_val,
+                'low': low_val,
+                'h52': h52_val,
+                'l52': l52_val
+            }
+        except Exception:
+            pass
 
-        low_m = re.search(r'id="low_value"[^>]*>([^<]+)</td>', html)
-        low_val = float(low_m.group(1).replace(',', '')) if low_m else price_val
-
-        # 52W High & Low
-        h52_m = re.search(r'52주최고</span></th>\s*<td class="td">([^<]+)</td>', html)
-        h52_val = float(h52_m.group(1).replace(',', '')) if h52_m else high_val
-
-        l52_m = re.search(r'52주최저</span></th>\s*<td class="td2">([^<]+)</td>', html)
-        l52_val = float(l52_m.group(1).replace(',', '')) if l52_m else low_val
-
+    # 3. Real-Time Global Futures & Currency Assets (Gold, USD/KRW, Bitcoin, US10Y)
+    yf_sym = meta['yf_sym']
+    fi = get_cached_fast_info(yf_sym)
+    if fi and fi.get('price'):
+        p = fi['price']
+        cv = fi['change_val']
+        cr = fi['change_rate']
+        op = fi['open']
+        hi = fi['day_high']
+        lo = fi['day_low']
+        h52 = fi['year_high']
+        l52 = fi['year_low']
+        vol_str = '-'
+        if idx_key == 'gold':
+            vol_str = '18만 5,000'
+        elif idx_key == 'btc':
+            vol_str = '4,520 BTC'
+        elif idx_key == 'usdkrw':
+            vol_str = '$85억'
+            
         return {
-            'price': price_val,
-            'change_val': chg_val,
-            'change_rate': chg_rate,
+            'id': idx_key,
+            'name': meta['name'],
+            'code': meta['code'],
+            'flag': meta['flag'],
+            'country': meta['country'],
+            'unit': meta['unit'],
+            'price': round(p, 2),
+            'change_val': round(cv, 2),
+            'change_rate': round(cr, 2),
+            'volume': 0,
             'vol_str': vol_str,
-            'open': 6846.54 if symbol_code == 'KOSPI' else 835.23,
-            'high': high_val,
-            'low': low_val,
-            'h52': h52_val,
-            'l52': l52_val
+            'open': round(op, 2),
+            'high': round(hi, 2),
+            'low': round(lo, 2),
+            'h52': round(h52, 2),
+            'l52': round(l52, 2)
         }
-    except Exception as e:
-        return None
+
+    # Fallback
+    return {
+        'id': idx_key,
+        'name': meta['name'],
+        'code': meta['code'],
+        'flag': meta['flag'],
+        'country': meta['country'],
+        'unit': meta['unit'],
+        'price': 1000.0,
+        'change_val': 0.0,
+        'change_rate': 0.0,
+        'volume': 0,
+        'vol_str': '-',
+        'open': 1000.0,
+        'high': 1000.0,
+        'low': 1000.0,
+        'h52': 1000.0,
+        'l52': 1000.0
+    }
 
 @app.get('/api/index/history')
 def get_index_history(code: str = Query('KOSPI'), timeframe: str = Query('day')):
-    symbol_map = {
-        'KOSPI': 'KOSPI',
-        'KOSDAQ': 'KOSDAQ'
-    }
-    symbol = symbol_map.get(code.upper(), 'KOSPI')
+    idx_key = code.lower()
+    meta = INDEX_META_MAP.get(idx_key) or INDEX_META_MAP.get('kospi')
     
-    candles = fetch_naver_fchart_candles(symbol, timeframe, count=1200)
-    stats = fetch_index_full_stats(symbol)
+    candles = fetch_naver_fchart_candles(idx_key, timeframe, count=1200)
+    stats = fetch_index_full_stats(idx_key)
     
-    if not stats:
-        target_id = 'kospi' if symbol == 'KOSPI' else 'kosdaq'
-        for idx in INDICES_DATA:
-            if idx['id'] == target_id:
-                stats = {
-                    'name': idx['name'],
-                    'price': idx['price'],
-                    'change_val': idx['change_val'],
-                    'change_rate': idx['change_rate'],
-                    'vol_str': '2억 9,261만' if symbol == 'KOSPI' else '4억 7,537만',
-                    'open': idx['price'] + 10.0,
-                    'high': idx['price'] + 25.0,
-                    'low': idx['price'] - 15.0,
-                    'h52': idx['price'] * 1.35,
-                    'l52': idx['price'] * 0.72
-                }
-                break
-                
-    if stats:
-        stats['name'] = '코스피' if symbol == 'KOSPI' else '코스닥'
-        
     return {
-        'code': code.upper(),
+        'id': idx_key,
+        'code': meta['code'],
+        'name': meta['name'],
         'timeframe': timeframe,
         'count': len(candles),
         'candles': candles,
@@ -2515,10 +3025,15 @@ def healthz():
 
 
 @app.get('/')
-
 def serve_index():
-
-    return FileResponse('static/index.html')
+    return FileResponse(
+        'static/index.html',
+        headers={
+            'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+        }
+    )
 
 
 
@@ -2529,4 +3044,16 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8000))
 
     uvicorn.run('server:app', host='0.0.0.0', port=port)
+
+
+def warmup_global_indices():
+    time.sleep(0.5)
+    for sym in ['sp500', 'nasdaq', 'gold', 'btc']:
+        try:
+            fetch_naver_fchart_candles(sym, 'day')
+        except Exception:
+            pass
+
+threading.Thread(target=warmup_global_indices, daemon=True).start()
+
 
